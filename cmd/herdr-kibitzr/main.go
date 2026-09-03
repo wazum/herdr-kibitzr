@@ -58,35 +58,62 @@ func run() error {
 		return nil
 	}
 
-	previous := loadState(path)
+	previous, err := loadState(path)
+	if err != nil {
+		// Say so and start over. Staying silent until somebody deletes the file
+		// would be worse than losing one window.
+		fmt.Printf("state discarded · %v\n", err)
+		previous = state{}
+	}
 	if previous.Baseline == "" {
 		fmt.Printf("baseline recorded · %s\n", short(current))
 		return saveState(path, state{Baseline: current})
 	}
 
-	diff, untracked, err := collect(repo, previous.Baseline)
+	untracked, err := untrackedFiles(repo)
 	if err != nil {
 		return err
 	}
-	comments := addedComments(diff, untracked)
-	count := 0
-	for _, lines := range comments {
-		count += len(lines)
+	diff, err := diffFrom(repo, previous.Baseline)
+	if err != nil {
+		return err
+	}
+	comments, count := countAdded(diff, untracked)
+
+	// A second diff only when the agent committed during this turn, so the mark
+	// is stored against the baseline it will next be compared with.
+	sinceHead := count
+	if previous.Baseline != current {
+		headDiff, headErr := diffFrom(repo, current)
+		if headErr != nil {
+			return headErr
+		}
+		_, sinceHead = countAdded(headDiff, untracked)
 	}
 
-	nudge, next := decide(previous, current, count)
+	nudge, next := decide(previous, current, count, sinceHead)
 	if !nudge {
 		fmt.Printf("quiet · %d comments · mark %d\n", count, previous.NudgedAtCount)
 		return saveState(path, next)
 	}
 
+	// Nothing recorded, so the next turn end tries again. Advancing the baseline
+	// here would bury comments the agent committed but was never told about.
 	if err := deliver(finished.paneID, comments); err != nil {
 		fmt.Printf("quiet · %d comments · not delivered: %v\n", count, err)
-		return saveState(path, previous.advance(current))
+		return nil
 	}
 
 	fmt.Printf("nudged %s · %d comments · %d files\n", finished.paneID, count, len(comments))
 	return saveState(path, next)
+}
+
+func countAdded(diff string, untracked map[string]string) (comments map[string][]string, count int) {
+	comments = addedComments(diff, untracked)
+	for _, lines := range comments {
+		count += len(lines)
+	}
+	return comments, count
 }
 
 func deliver(paneID string, comments map[string][]string) error {

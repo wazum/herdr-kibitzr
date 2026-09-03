@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestDecideNudgesOnTheFirstAddedComment(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1"}, "sha1", 1)
+	nudge, next := decide(state{Baseline: "sha1"}, "sha1", 1, 1)
 
 	if !nudge {
 		t.Error("did not nudge for one added comment")
@@ -14,7 +14,7 @@ func TestDecideNudgesOnTheFirstAddedComment(t *testing.T) {
 }
 
 func TestDecideStaysQuietWhenTheAgentKeptSomeComments(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha1", 2)
+	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha1", 2, 2)
 
 	if nudge {
 		t.Error("nudged again after a cleanup left 2 of 5 comments")
@@ -25,7 +25,7 @@ func TestDecideStaysQuietWhenTheAgentKeptSomeComments(t *testing.T) {
 }
 
 func TestDecideStaysQuietWhenTheAgentIgnoredTheNudge(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha1", 5)
+	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha1", 5, 5)
 
 	if nudge {
 		t.Error("nudged again for the same 5 comments")
@@ -36,7 +36,7 @@ func TestDecideStaysQuietWhenTheAgentIgnoredTheNudge(t *testing.T) {
 }
 
 func TestDecideNudgesAgainWhenNewCommentsArriveAfterACleanup(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha1", 6)
+	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha1", 6, 6)
 
 	if !nudge {
 		t.Error("did not nudge when the count rose above the mark")
@@ -46,21 +46,39 @@ func TestDecideNudgesAgainWhenNewCommentsArriveAfterACleanup(t *testing.T) {
 	}
 }
 
-func TestDecideResetsTheMarkWhenTheAgentCommitted(t *testing.T) {
-	// The count came from the old baseline, so it says nothing about what the
-	// new one already contains.
-	_, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha2", 5)
+// A mark counted from the old baseline cannot be compared against the new one.
+// Storing it unconverted would swallow every later comment until the count
+// climbed past it again.
+func TestDecideRebasesTheMarkWhenANudgedTurnCommitted(t *testing.T) {
+	nudge, next := decide(state{Baseline: "sha1"}, "sha2", 9, 3)
 
+	if !nudge {
+		t.Error("did not nudge for 9 added comments")
+	}
 	if next.Baseline != "sha2" {
 		t.Errorf("baseline %q, want %q", next.Baseline, "sha2")
 	}
-	if next.NudgedAtCount != 0 {
-		t.Errorf("mark %d, want 0 against the new baseline", next.NudgedAtCount)
+	if next.NudgedAtCount != 3 {
+		t.Errorf("mark %d, want the 3 still measurable from sha2", next.NudgedAtCount)
+	}
+}
+
+func TestDecideRebasesTheMarkWhenAQuietTurnCommitted(t *testing.T) {
+	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha2", 5, 2)
+
+	if nudge {
+		t.Error("nudged for comments already covered by an earlier nudge")
+	}
+	if next.Baseline != "sha2" {
+		t.Errorf("baseline %q, want %q", next.Baseline, "sha2")
+	}
+	if next.NudgedAtCount != 2 {
+		t.Errorf("mark %d, want the 2 still measurable from sha2", next.NudgedAtCount)
 	}
 }
 
 func TestDecideFirstRunOnlyRecordsTheBaseline(t *testing.T) {
-	nudge, next := decide(state{}, "sha1", 7)
+	nudge, next := decide(state{}, "sha1", 7, 7)
 
 	if nudge {
 		t.Error("nudged on the first turn end seen for a project")

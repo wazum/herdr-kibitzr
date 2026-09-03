@@ -4,6 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -13,25 +16,51 @@ func stateFile(stateDir, repo string) string {
 	return filepath.Join(stateDir, hex.EncodeToString(sum[:8])+".json")
 }
 
-func loadState(path string) state {
+// Only a file nobody has written yet means a fresh project. Anything else read
+// as fresh would quietly throw away the window the nudge rule works from.
+func loadState(path string) (state, error) {
 	content, err := os.ReadFile(path)
-	if err != nil {
-		return state{}
+	if errors.Is(err, fs.ErrNotExist) {
+		return state{}, nil
 	}
+	if err != nil {
+		return state{}, err
+	}
+
 	var loaded state
 	if err := json.Unmarshal(content, &loaded); err != nil {
-		return state{}
+		return state{}, fmt.Errorf("unreadable state in %s: %w", path, err)
 	}
-	return loaded
+	return loaded, nil
 }
 
+// Written beside the real file and renamed over it, so a process that dies
+// mid-write leaves the previous state rather than half of this one.
 func saveState(path string, next state) error {
 	content, err := json.Marshal(next)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, content, 0o600)
+
+	temporary, err := os.CreateTemp(directory, ".state-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(temporary.Name()) }()
+
+	if _, err := temporary.Write(content); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(temporary.Name(), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(temporary.Name(), path)
 }

@@ -88,6 +88,41 @@ func TestAddedCommentsFindsIndentedCommentsInUntrackedFiles(t *testing.T) {
 	assertComments(t, got, map[string][]string{"src/Order.php": {"/** @var int */"}})
 }
 
+func TestAddedCommentsIgnoresCodeThatStartsWithAnAsterisk(t *testing.T) {
+	diff := "+++ b/main.c\n" +
+		"+*ptr = value;\n" +
+		"+**handle = other;\n" +
+		"+* still a block comment\n" +
+		"+*/\n" +
+		"+*\n"
+
+	got := addedComments(diff, nil)
+
+	assertComments(t, got, map[string][]string{"main.c": {
+		"* still a block comment",
+		"*/",
+		"*",
+	}})
+}
+
+func TestAddedCommentsIgnoresPreprocessorDirectives(t *testing.T) {
+	diff := "+++ b/main.c\n" +
+		"+#include <stdio.h>\n" +
+		"+#define WIDTH 80\n" +
+		"+#ifndef GUARD\n" +
+		"+#endif\n" +
+		"+#pragma once\n" +
+		"+# a real comment\n" +
+		"+#also a real comment\n"
+
+	got := addedComments(diff, nil)
+
+	assertComments(t, got, map[string][]string{"main.c": {
+		"# a real comment",
+		"#also a real comment",
+	}})
+}
+
 func assertComments(t *testing.T, got, want map[string][]string) {
 	t.Helper()
 	if len(got) != len(want) {

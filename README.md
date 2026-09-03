@@ -1,7 +1,17 @@
-# kibitzr
+<h1 align="center">herdr-kibitzr</h1>
+<p align="center"><em>Asks your coding agent to review the comments it just wrote,<br>so what explains something stays and the noise goes.</em></p>
+<br>
 
-> Asks your coding agent to review the comments it just wrote, so what explains
-> something stays and the noise goes.
+<p align="center">
+  <a href="https://github.com/wazum/herdr-kibitzr/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/wazum/herdr-kibitzr/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=checks&labelColor=24273a" alt="checks"></a>
+  <a href="https://herdr.dev"><img src="https://img.shields.io/badge/herdr-0.8.0%2B-c3b1e1?style=for-the-badge&logoColor=white&labelColor=24273a" alt="herdr 0.8.0 or newer"></a>
+  <a href="go.mod"><img src="https://img.shields.io/badge/Go-1.26%2B-b5ead7?style=for-the-badge&logo=go&logoColor=white&labelColor=24273a" alt="Go 1.26 or newer"></a>
+  <a href="go.mod"><img src="https://img.shields.io/badge/dependencies-0-ffb997?style=for-the-badge&labelColor=24273a" alt="no dependencies"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-ffc6d9?style=for-the-badge&logo=opensourceinitiative&logoColor=white&labelColor=24273a" alt="MIT licence"></a>
+</p>
+
+A plugin for [herdr](https://herdr.dev), the terminal multiplexer that runs your
+coding agents.
 
 Every coding agent comments too much. You can put "no useless comments" in
 `CLAUDE.md`, in `AGENTS.md`, in a skill, and it still writes `// increment the
@@ -65,10 +75,17 @@ added comments underneath whatever you write, so keep the file to prose.
 
 ## What counts as a comment
 
-A line whose first non-blank characters are `//`, `///`, `#`, `/*`, `*`, `*/` or
-`<!--`. Shebangs don't count. Prose and data files are skipped by extension:
-`.md`, `.txt`, `.rst`, `.yml`, `.yaml`, `.json`, `.toml`, `.lock`, `.csv`,
-`.svg`.
+A line whose first non-blank characters are `//`, `/*`, `<!--`, `#`, or an
+asterisk continuing a block comment. Three things that look like markers are
+excluded, because each would otherwise fire on ordinary code:
+
+- a shebang, `#!/usr/bin/env bash`
+- a preprocessor directive, `#include` or `#define` and the rest of that family
+- a dereference, `*ptr = value`, which is why an asterisk has to be followed by
+  a space, a slash, or nothing
+
+Prose and data files are skipped by extension: `.md`, `.txt`, `.rst`, `.yml`,
+`.yaml`, `.json`, `.toml`, `.lock`, `.csv`, `.svg`.
 
 Trailing comments after code are not counted. Finding them without a real
 tokenizer flags every URL and every `#` inside a string, and the agent reviews
@@ -90,9 +107,10 @@ non-empty composer would mean parsing each agent's UI, so this is accepted
 rather than solved.
 
 Cost is low enough to ignore: a status change that isn't a turn end costs about
-4 ms and runs no git at all, and a turn end on a 2400-file repository costs
-about 60 ms in a child process, where it can't touch herdr's rendering or
-terminal parsing.
+4 ms and runs no git at all, and a turn end on a 500-file repository costs about
+70 ms in a child process, where it can't touch herdr's rendering or terminal
+parsing. Untracked files are read up to 300 files and 1 MB each, so a project
+scaffolded before anyone wrote a `.gitignore` can't turn into an unbounded read.
 
 ## Licence
 

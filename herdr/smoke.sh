@@ -21,6 +21,12 @@ calls="$work/herdr-calls.log"
 cat > "$work/herdr" <<'FAKE'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$HERDR_CALL_LOG"
+# Stands in for a pane that turns out to be blocked, which herdr refuses to
+# type into.
+if [[ -n ${HERDR_REFUSE_PROMPT:-} && $2 == prompt ]]; then
+	echo "agent_blocked" >&2
+	exit 1
+fi
 FAKE
 chmod +x "$work/herdr"
 
@@ -79,6 +85,29 @@ expect "the committed comments are behind the baseline" "quiet · 0 comments · 
 
 printf '\n// one more remark\n' >> "$repo/main.go"
 expect "a comment after the commit nudges again" "nudged w1:p2 · 1 comments" "$(./bin/herdr-kibitzr)"
+
+# A turn that adds comments and commits them in one go. The mark counted here
+# comes from the old baseline, so storing it against the new one would swallow
+# every later comment until the count climbed past it again.
+printf '\n// three\n// more\n// remarks\n' >> "$repo/main.go"
+git -C "$repo" add -A
+git -C "$repo" -c user.email=t@example.com -c user.name=t commit -q -m third
+expect "a turn that adds and commits nudges" "nudged w1:p2 · 4 comments" "$(./bin/herdr-kibitzr)"
+
+printf '\n// and one after that\n' >> "$repo/main.go"
+expect "the next comment is still noticed" "nudged w1:p2 · 1 comments" "$(./bin/herdr-kibitzr)"
+
+# A nudge the agent never received, on a turn that also committed. Both facts
+# together are what used to record the comments as covered and lose them.
+printf '\n// written while the pane was blocked\n' >> "$repo/main.go"
+git -C "$repo" add -A
+git -C "$repo" -c user.email=t@example.com -c user.name=t commit -q -m fourth
+export HERDR_REFUSE_PROMPT=1
+expect "a refused prompt is reported, not recorded" "not delivered" "$(./bin/herdr-kibitzr)"
+unset HERDR_REFUSE_PROMPT
+# Two, because the baseline never moved: the comment from the turn before is
+# still in range alongside the one written while the pane was blocked.
+expect "the refused nudge is tried again" "nudged w1:p2 · 2 comments" "$(./bin/herdr-kibitzr)"
 
 export HERDR_PLUGIN_EVENT_JSON='{"data":{"pane_id":"w1:p2","agent_status":"working"}}'
 : > "$calls"

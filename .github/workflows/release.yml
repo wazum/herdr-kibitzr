@@ -8,7 +8,28 @@ permissions:
   contents: read
 
 jobs:
+  # A tag push does not trigger CI, so the release runs it rather than trusting
+  # that the commit was already checked.
+  qa:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The tag has to match the manifest the install script reads
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          declared="$(sed -n 's/^version = "\(.*\)"/\1/p' herdr-plugin.toml | head -1)"
+          if [[ "$TAG" != "v${declared}" ]]; then
+            echo "tag $TAG does not match herdr-plugin.toml version $declared" >&2
+            exit 1
+          fi
+
   binaries:
+    needs: [qa, version]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -31,7 +52,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: true
 
       - name: Build

@@ -43,16 +43,43 @@ func addedComments(diff string, untracked map[string]string) map[string][]string
 	return found
 }
 
-var markers = []string{"//", "#", "/*", "*", "<!--"}
-
 func isComment(text string) bool {
-	if strings.HasPrefix(text, "#!") {
-		return false
-	}
-	for _, marker := range markers {
-		if strings.HasPrefix(text, marker) {
-			return true
-		}
+	switch {
+	case strings.HasPrefix(text, "//"), strings.HasPrefix(text, "/*"),
+		strings.HasPrefix(text, "<!--"):
+		return true
+	case strings.HasPrefix(text, "#"):
+		return !strings.HasPrefix(text, "#!") && !directive(text)
+	case strings.HasPrefix(text, "*"):
+		return continuesBlock(text)
 	}
 	return false
+}
+
+var directives = map[string]bool{
+	"include": true, "define": true, "undef": true, "if": true, "ifdef": true,
+	"ifndef": true, "elif": true, "elifdef": true, "elifndef": true,
+	"else": true, "endif": true, "pragma": true, "error": true,
+	"warning": true, "line": true, "embed": true,
+}
+
+// #include is not a comment, but # on its own line in Python, Ruby, PHP or a
+// shell script is, with or without a space after it.
+func directive(text string) bool {
+	word := strings.TrimLeft(text[1:], " \t")
+	end := strings.IndexFunc(word, func(r rune) bool {
+		return r < 'a' || r > 'z'
+	})
+	if end >= 0 {
+		word = word[:end]
+	}
+	return directives[word]
+}
+
+// A block comment's inner lines are `* text`, `*/` or a bare `*`. Dereferencing
+// a pointer, as in `*ptr = value`, is code.
+func continuesBlock(text string) bool {
+	rest := text[1:]
+	return rest == "" || strings.HasPrefix(rest, "/") ||
+		strings.HasPrefix(rest, " ") || strings.HasPrefix(rest, "\t")
 }
