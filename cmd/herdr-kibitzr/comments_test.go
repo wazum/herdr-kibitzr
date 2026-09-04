@@ -85,6 +85,35 @@ func TestAddedCommentsIgnoresPreprocessorDirectives(t *testing.T) {
 	}})
 }
 
+func TestAddedCommentsFindsPythonDocstrings(t *testing.T) {
+	got := addedComments([]addition{{path: "clauth/oauth.py", text: "" +
+		"class OAuthAccountMergeTest(unittest.TestCase):\n" +
+		"    \"\"\"Claude takes no lock on ~/.claude.json, it watches the file,\n" +
+		"    so the identity swap has to be one atomic replace.\"\"\"\n" +
+		"\n" +
+		"    def setUp(self):\n" +
+		"        '''Single quoted docstrings count too.'''\n" +
+		"        self.directory = tempfile.mkdtemp()\n"}})
+
+	// The line a docstring opens on is enough to notice it. Its later lines do
+	// not start with the marker, and the prompt names the file anyway.
+	assertComments(t, got, map[string][]string{"clauth/oauth.py": {
+		`"""Claude takes no lock on ~/.claude.json, it watches the file,`,
+		`'''Single quoted docstrings count too.'''`,
+	}})
+}
+
+// A multi-line string holding data is code, and an agent writing one is not
+// commenting. Assignment is the tell: a docstring opens its own line.
+func TestAddedCommentsIgnoresAssignedMultilineStrings(t *testing.T) {
+	got := addedComments([]addition{{path: "query.py", text: "" +
+		"sql = \"\"\"\n" +
+		"SELECT 1\n" +
+		"\"\"\"\n"}})
+
+	assertComments(t, got, map[string][]string{"query.py": {`"""`}})
+}
+
 func TestAddedCommentsGathersEveryWriteToOneFile(t *testing.T) {
 	got := addedComments([]addition{
 		{path: "main.go", text: "// first edit\n"},

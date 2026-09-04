@@ -19,7 +19,7 @@ type addition struct {
 }
 
 // Claude records the literal text of every edit it makes. Nothing else does.
-func authorshipFor(finished turn, repo string) authorship {
+func authorshipFor(finished *turn, repo string) authorship {
 	if finished.agent == "claude" {
 		return claudeLog{sessionID: finished.session}
 	}

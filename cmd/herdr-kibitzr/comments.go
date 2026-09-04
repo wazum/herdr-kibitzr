@@ -36,6 +36,10 @@ func isComment(text string) bool {
 	case strings.HasPrefix(text, "//"), strings.HasPrefix(text, "/*"),
 		strings.HasPrefix(text, "<!--"):
 		return true
+	// A Python docstring opens its own line. A multi-line string holding data
+	// sits after an assignment, so its opening line starts with the name.
+	case strings.HasPrefix(text, `"""`), strings.HasPrefix(text, "'''"):
+		return true
 	case strings.HasPrefix(text, "#"):
 		return !strings.HasPrefix(text, "#!") && !directive(text)
 	case strings.HasPrefix(text, "*"):

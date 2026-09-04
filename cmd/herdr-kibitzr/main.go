@@ -69,10 +69,11 @@ func toggle() error {
 }
 
 func run() error {
-	finished, ok := turnEnd(os.Getenv("HERDR_PLUGIN_EVENT_JSON"), os.Getenv("HERDR_PLUGIN_CONTEXT_JSON"))
+	parsed, ok := turnEnd(os.Getenv("HERDR_PLUGIN_EVENT_JSON"), os.Getenv("HERDR_PLUGIN_CONTEXT_JSON"))
 	if !ok {
 		return nil
 	}
+	finished := &parsed
 
 	repo, err := topLevel(finished.cwd)
 	if err != nil {
@@ -84,23 +85,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if muted(muteFile(stateDir), finished.paneID) {
-		say(finished, "quiet · muted")
-		return nil
-	}
-
 	answer, err := herdrOutput("pane", "get", finished.paneID)
 	if err != nil {
 		return err
 	}
 	pane := readPane(answer)
 
-	// A prompt submitted into a focused pane arrives glued onto whatever the
-	// person was already typing.
-	if pane.focused {
-		say(finished, "quiet · pane is focused")
-		return nil
-	}
 	if pane.session == "" {
 		say(finished, "quiet · no agent session to read")
 		return nil
@@ -123,10 +113,22 @@ func run() error {
 		previous = state{}
 	}
 
+	if !settled(previous, finished.status) {
+		say(finished, "quiet · still %s", finished.status)
+		return nil
+	}
+
+	// Every settled turn records the status it reported, whatever else it does,
+	// so the next one can tell a real turn end from a title change.
+	if muted(muteFile(stateDir), finished.paneID) {
+		say(finished, "quiet · muted")
+		return saveState(path, record(previous, finished.status))
+	}
+
 	added, cursor, err := authorshipFor(finished, repo).additions(previous.Cursor)
 	if err != nil {
 		say(finished, "quiet · cannot read what %s wrote: %v", finished.agent, err)
-		return nil
+		return saveState(path, record(previous, finished.status))
 	}
 	comments, count := countAdded(added)
 
@@ -137,22 +139,23 @@ func run() error {
 		} else {
 			say(finished, "quiet · %d comments written", count)
 		}
-		return saveState(path, next)
+		return saveState(path, record(next, finished.status))
 	}
 
-	// Nothing recorded, so the next turn reads the same writes again and retries.
+	// The cursor stays where it was, so the next turn reads the same writes and
+	// tries again. Only the status this turn reported is worth recording.
 	if err := deliver(finished, comments); err != nil {
 		say(finished, "quiet · %d comments · not delivered: %v", count, err)
-		return nil
+		return saveState(path, record(previous, finished.status))
 	}
 
 	say(finished, "nudged · %d comments · %d files", count, len(comments))
-	return saveState(path, next)
+	return saveState(path, record(next, finished.status))
 }
 
 // Every pane on the server writes to one plugin log, so every line has to say
 // which pane it came from.
-func say(finished turn, format string, args ...any) {
+func say(finished *turn, format string, args ...any) {
 	fmt.Printf("%s %s · %s\n", finished.paneID, finished.agent, fmt.Sprintf(format, args...))
 }
 
@@ -175,7 +178,7 @@ func countAdded(added []addition) (comments map[string][]string, count int) {
 	return comments, count
 }
 
-func deliver(finished turn, comments map[string][]string) error {
+func deliver(finished *turn, comments map[string][]string) error {
 	prompt, err := promptText()
 	if err != nil {
 		return err
@@ -190,7 +193,7 @@ func deliver(finished turn, comments map[string][]string) error {
 // The agent label is the one piece of text a plugin can change in herdr's
 // default sidebar rows. This builds it from the agent kind, so two nudges in a
 // row cannot stack two pairs of eyes.
-func markLooked(finished turn) {
+func markLooked(finished *turn) {
 	if finished.agent == "" {
 		return
 	}

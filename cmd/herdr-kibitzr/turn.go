@@ -6,6 +6,7 @@ type turn struct {
 	paneID  string
 	cwd     string
 	agent   string
+	status  string
 	session string
 }
 
@@ -85,5 +86,6 @@ func turnEnd(eventJSON, contextJSON string) (turn, bool) {
 		paneID: event.Data.PaneID,
 		cwd:    context.FocusedPaneCwd,
 		agent:  event.Data.Agent,
+		status: event.Data.AgentStatus,
 	}, true
 }

@@ -2,6 +2,29 @@ package main
 
 import "testing"
 
+// Herdr fires the same event when a pane's title or token counts change, with
+// the status unchanged. Those are not turn ends, and acting on them is what
+// dropped a prompt into a composer somebody was typing in.
+func TestSettledOnlyOnAChangeOfStatus(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		last   string
+		now    string
+		settle bool
+	}{
+		{"finished working", "working", "done", true},
+		{"finished and then seen", "done", "idle", true},
+		{"first status ever seen", "", "idle", true},
+		{"title changed while done", "done", "done", false},
+		{"tokens changed while idle", "idle", "idle", false},
+	} {
+		if got := settled(state{LastStatus: testCase.last}, testCase.now); got != testCase.settle {
+			t.Errorf("%s: %q to %q gave %v, want %v",
+				testCase.name, testCase.last, testCase.now, got, testCase.settle)
+		}
+	}
+}
+
 func TestDecideNudgesOnTheFirstAddedComment(t *testing.T) {
 	nudge, next := decide(state{Cursor: "10"}, "20", 1)
 

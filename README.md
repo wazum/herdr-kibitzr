@@ -62,9 +62,13 @@ acting on what it was told, and acting on it usually means rewriting a comment
 rather than deleting it, which is freshly written text again. Judging that turn
 would nudge about the cleanup.
 
-Two panes are never touched: one you have focused, because a prompt would land
-on whatever you were half way through typing, and one whose writes predate
-kibitzr, so a session that has just opened is not blamed for the tree it found.
+A turn ends when an agent's status changes. Herdr sends the same event when a
+pane's title or token counts change, and kibitzr ignores those, because acting
+on one is how a prompt ends up glued to a sentence you were half way through
+typing.
+
+Nothing an agent wrote before kibitzr started watching it is counted either, so
+a session that has just opened is not blamed for the tree it found.
 
 Why it fired, or didn't, is in `herdr plugin log list --plugin wazum.kibitzr`.
 
@@ -104,14 +108,17 @@ added comments underneath whatever you write, so keep the file to prose.
 
 ## What counts as a comment
 
-A line whose first non-blank characters are `//`, `/*`, `<!--`, `#`, or an
-asterisk continuing a block comment. Three lookalikes are excluded, because each
-fires on ordinary code:
+A line whose first non-blank characters are `//`, `/*`, `<!--`, `#`, a Python
+docstring's `"""` or `'''`, or an asterisk continuing a block comment. Three
+lookalikes are excluded, because each fires on ordinary code:
 
 - a shebang, `#!/usr/bin/env bash`
 - a preprocessor directive, `#include`, `#define` and that family
 - a dereference, `*ptr = value`, which is why an asterisk needs a space, a
   slash, or nothing after it
+
+A multi-line string holding data is code, not a comment. Assignment is the tell,
+because a docstring opens its own line and `sql = """` does not.
 
 Prose and data files are skipped by extension: `.md`, `.txt`, `.rst`, `.yml`,
 `.yaml`, `.json`, `.toml`, `.lock`, `.csv`, `.svg`. Trailing comments after code
@@ -127,6 +134,11 @@ Only Claude gets exact attribution. For any other agent, a comment you typed
 yourself while it was working is blamed on it, and so is one written by a second
 agent in the same repository. Adding an agent is one adapter behind one
 interface, so this improves as agents start recording their own edits.
+
+A nudge can still land while you are typing, if the agent finishes a real turn
+at that moment. Telling an empty composer from a typed one needs each agent's
+screen colours, so kibitzr does not try. Ignoring title changes takes away the
+common case.
 
 Cost runs in a short-lived child process that cannot touch herdr's rendering,
 terminal parsing or detection:
