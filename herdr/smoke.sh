@@ -37,6 +37,15 @@ cat > "$work/herdr" <<'FAKE'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$HERDR_CALL_LOG"
 
+if [[ $1 == agent && $2 == read ]]; then
+	if [[ -n ${HERDR_COMPOSER_TYPED:-} ]]; then
+		printf '❯ review the uncommitted\r\n'
+	else
+		printf '❯ \033[0m\033[2mgo build ./...\033[0m\r\n'
+	fi
+	exit 0
+fi
+
 if [[ $1 == pane && $2 == get ]]; then
 	printf '{"result":{"pane":{"pane_id":"%s","focused":%s,"agent_session":{"value":"%s"}}}}\n' \
 		"$3" "${HERDR_PANE_FOCUSED:-false}" "${HERDR_PANE_SESSION:-session-1}"
@@ -160,7 +169,19 @@ spend_cleanup_pass
 expect "a turn with no writes stays quiet" "0 comments written" "$(turn)"
 refuse_prompt_calls "and prompts nobody again"
 
+# Nothing is submitted into an input somebody has typed into. Claude shows a dim
+# suggestion when the line is empty, so undimmed text means a person is there.
+wrote "$repo/src/Money.php" "// written while somebody was typing"
+export HERDR_COMPOSER_TYPED=1
+: > "$calls"
+expect "a typed composer holds the nudge back" "somebody is typing" "$(turn)"
+refuse_prompt_calls "and prompts nobody"
+unset HERDR_COMPOSER_TYPED
+expect "and the nudge arrives once the line is clear" \
+	"w1:p2 claude · nudged" "$(turn)"
+
 # A nudge the agent never received is read again next turn rather than lost.
+spend_cleanup_pass
 wrote "$repo/main.go" "// written while the pane was blocked"
 export HERDR_REFUSE_PROMPT=1
 expect "a refused prompt is reported, not recorded" "not delivered" "$(turn)"

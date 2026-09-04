@@ -2,9 +2,8 @@ package main
 
 import "testing"
 
-// Herdr fires the same event when a pane's title or token counts change, with
-// the status unchanged. Those are not turn ends, and acting on them is what
-// dropped a prompt into a composer somebody was typing in.
+// A title or token change repeats the status, and acting on one is what dropped
+// a prompt into a composer somebody was typing in.
 func TestSettledOnlyOnAChangeOfStatus(t *testing.T) {
 	for _, testCase := range []struct {
 		name   string
@@ -69,9 +68,8 @@ func TestDecideGivesTheAgentOneUncontestedCleanupTurn(t *testing.T) {
 	}
 }
 
-// Herdr reports a turn end for a presentation change too, so an event can
-// arrive between the nudge and the agent's reply. Letting that spend the pass
-// leaves the real cleanup to be nudged about.
+// An event can arrive between the nudge and the agent's reply. Letting it spend
+// the pass leaves the real cleanup to be nudged about.
 func TestDecideKeepsTheCleanupPassForATurnWithNoWrites(t *testing.T) {
 	_, next := decide(state{Cursor: "20", AwaitingCleanup: true}, "30", 0)
 

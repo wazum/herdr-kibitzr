@@ -95,16 +95,15 @@ func TestAddedCommentsFindsPythonDocstrings(t *testing.T) {
 		"        '''Single quoted docstrings count too.'''\n" +
 		"        self.directory = tempfile.mkdtemp()\n"}})
 
-	// The line a docstring opens on is enough to notice it. Its later lines do
-	// not start with the marker, and the prompt names the file anyway.
+	// The opening line is enough to notice a docstring, and the prompt names
+	// the file anyway.
 	assertComments(t, got, map[string][]string{"clauth/oauth.py": {
 		`"""Claude takes no lock on ~/.claude.json, it watches the file,`,
 		`'''Single quoted docstrings count too.'''`,
 	}})
 }
 
-// A multi-line string holding data is code, and an agent writing one is not
-// commenting. Assignment is the tell: a docstring opens its own line.
+// Assignment is the tell. A docstring opens its own line and this does not.
 func TestAddedCommentsIgnoresAssignedMultilineStrings(t *testing.T) {
 	got := addedComments([]addition{{path: "query.py", text: "" +
 		"sql = \"\"\"\n" +

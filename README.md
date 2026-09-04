@@ -135,10 +135,11 @@ yourself while it was working is blamed on it, and so is one written by a second
 agent in the same repository. Adding an agent is one adapter behind one
 interface, so this improves as agents start recording their own edits.
 
-A nudge can still land while you are typing, if the agent finishes a real turn
-at that moment. Telling an empty composer from a typed one needs each agent's
-screen colours, so kibitzr does not try. Ignoring title changes takes away the
-common case.
+For Claude, nothing is submitted into an input you have typed into. Claude Code
+shows a dim suggestion when the line is empty, so undimmed text after the
+chevron means a person is mid-sentence and the nudge waits for the next turn.
+Other agents have no such adapter yet, so a nudge there can still land on a
+half-written line.
 
 Cost runs in a short-lived child process that cannot touch herdr's rendering,
 terminal parsing or detection:

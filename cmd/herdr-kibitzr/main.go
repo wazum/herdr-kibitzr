@@ -15,7 +15,6 @@ import (
 
 const defaultPrompt = `You added comments in your last changes, listed below by file. Review each one. Delete every comment that only restates what the code already says, including single-line ones. Shorten what remains. Keep type annotations and docblocks the tooling needs. Do not change code.`
 
-// A blink, not a state.
 const badgeTTL = 10 * time.Second
 
 const herdrTimeout = 15 * time.Second
@@ -118,8 +117,8 @@ func run() error {
 		return nil
 	}
 
-	// Every settled turn records the status it reported, whatever else it does,
-	// so the next one can tell a real turn end from a title change.
+	// Every settled turn records its status, whatever else it does, or the next
+	// one cannot tell a turn end from a title change.
 	if muted(muteFile(stateDir), finished.paneID) {
 		say(finished, "quiet · muted")
 		return saveState(path, record(previous, finished.status))
@@ -142,8 +141,13 @@ func run() error {
 		return saveState(path, record(next, finished.status))
 	}
 
-	// The cursor stays where it was, so the next turn reads the same writes and
-	// tries again. Only the status this turn reported is worth recording.
+	// The cursor stays put on both paths below, so the next turn reads the same
+	// writes and tries again.
+	if composerFor(finished).busy() {
+		say(finished, "quiet · %d comments · somebody is typing", count)
+		return saveState(path, record(previous, finished.status))
+	}
+
 	if err := deliver(finished, comments); err != nil {
 		say(finished, "quiet · %d comments · not delivered: %v", count, err)
 		return saveState(path, record(previous, finished.status))
@@ -191,8 +195,8 @@ func deliver(finished *turn, comments map[string][]string) error {
 }
 
 // The agent label is the one piece of text a plugin can change in herdr's
-// default sidebar rows. This builds it from the agent kind, so two nudges in a
-// row cannot stack two pairs of eyes.
+// default sidebar rows. Built from the agent kind, so two nudges in a row
+// cannot stack two pairs of eyes.
 func markLooked(finished *turn) {
 	if finished.agent == "" {
 		return

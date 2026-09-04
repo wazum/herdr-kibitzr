@@ -14,8 +14,7 @@ func skipped(path string) bool {
 	return skippedExtensions[strings.ToLower(filepath.Ext(path))]
 }
 
-// The comment lines in text an agent wrote, per file. Where the text came from
-// is the caller's problem. Here it is only text.
+// Where the text came from is the caller's problem. Here it is only text.
 func addedComments(added []addition) map[string][]string {
 	found := map[string][]string{}
 	for _, one := range added {
@@ -36,8 +35,7 @@ func isComment(text string) bool {
 	case strings.HasPrefix(text, "//"), strings.HasPrefix(text, "/*"),
 		strings.HasPrefix(text, "<!--"):
 		return true
-	// A Python docstring opens its own line. A multi-line string holding data
-	// sits after an assignment, so its opening line starts with the name.
+	// A docstring opens its own line, so `sql = """` stays code.
 	case strings.HasPrefix(text, `"""`), strings.HasPrefix(text, "'''"):
 		return true
 	case strings.HasPrefix(text, "#"):
@@ -55,8 +53,7 @@ var directives = map[string]bool{
 	"warning": true, "line": true, "embed": true,
 }
 
-// #include is not a comment, but # on its own line in Python, Ruby, PHP or a
-// shell script is, with or without a space after it.
+// # is a comment in Python, Ruby, PHP and shell. #include is not.
 func directive(text string) bool {
 	word := strings.TrimLeft(text[1:], " \t")
 	end := strings.IndexFunc(word, func(r rune) bool {
@@ -68,8 +65,7 @@ func directive(text string) bool {
 	return directives[word]
 }
 
-// A block comment's inner lines look like `* text`, `*/` or a bare `*`. A
-// pointer dereference such as `*ptr = value` is code.
+// A pointer dereference such as `*ptr = value` is code, not a block comment.
 func continuesBlock(text string) bool {
 	rest := text[1:]
 	return rest == "" || strings.HasPrefix(rest, "/") ||
