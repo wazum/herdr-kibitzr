@@ -5,9 +5,7 @@ import (
 	"strings"
 )
 
-// commit names an unpushed commit the agent made during the turn, so the fix
-// goes where the slop already is instead of landing on top of it. Empty when
-// nothing was committed, or when what was committed is already pushed.
+// commit is empty unless there is one the agent can still amend.
 func nudgeText(prompt string, comments map[string][]string, commit string) string {
 	if len(comments) == 0 {
 		return prompt

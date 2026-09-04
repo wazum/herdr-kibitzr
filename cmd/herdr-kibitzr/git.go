@@ -42,7 +42,6 @@ func head(dir string) (string, error) {
 	return git(dir, "rev-parse", "HEAD")
 }
 
-// Whether a commit can still be rewritten, meaning no remote carries it yet.
 func amendable(dir, sha string) bool {
 	remotes, err := git(dir, "branch", "--remotes", "--contains", sha)
 	if err != nil {

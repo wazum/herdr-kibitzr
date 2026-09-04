@@ -113,9 +113,8 @@ func TestAddedCommentsIgnoresAssignedMultilineStrings(t *testing.T) {
 	assertComments(t, got, map[string][]string{"query.py": {`"""`}})
 }
 
-// An edit replaces a region, so its new text carries the unchanged lines around
-// the change. Reported from the field: a nudge listed .git/info/exclude because
-// git's own boilerplate comments sat in the region the agent edited.
+// From the field: a nudge listed .git/info/exclude because git's own
+// boilerplate sat in the region the agent edited.
 func TestAddedCommentsIgnoresCommentsAnEditOnlyCarriedAlong(t *testing.T) {
 	got := addedComments([]addition{{
 		path: ".git/info/exclude",

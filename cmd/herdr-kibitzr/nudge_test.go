@@ -23,8 +23,6 @@ func TestNudgeTextListsTheFilesInAStableOrder(t *testing.T) {
 	}
 }
 
-// An agent that commits before its turn ends is nudged afterwards, so the fix
-// would sit uncommitted on top of a commit that still carries the slop.
 func TestNudgeTextAsksForAnAmendWhenTheWorkIsAlreadyCommitted(t *testing.T) {
 	got := nudgeText("Review your comments.",
 		map[string][]string{"src/Order.php": {"// one"}}, "915da5eb")

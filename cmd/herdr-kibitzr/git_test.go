@@ -64,8 +64,7 @@ func TestDiffFromCreditsNothingToTheFileBeforeADeletion(t *testing.T) {
 	}
 }
 
-// Amending something already published rewrites history somebody else may
-// have, so only a commit no remote carries is offered.
+// Rewriting a published commit changes history somebody else may hold.
 func TestAmendableOnlyWhileACommitIsUnpushed(t *testing.T) {
 	origin := newRepo(t)
 	write(t, origin, "main.go", "package main\n")

@@ -19,8 +19,7 @@ func record(next state, status, head string) state {
 	return next
 }
 
-// The commit an agent made during the turn, if it made one. Nudged afterwards,
-// the agent would otherwise leave its fix uncommitted on top of the slop.
+// The commit an agent made during the turn, if it made one.
 func committedDuring(prev state, head string) string {
 	if prev.LastHead == "" || prev.LastHead == head {
 		return ""

@@ -125,8 +125,7 @@ func run() error {
 		return nil
 	}
 
-	// Not every repository has a commit yet, and that is no reason to stay
-	// quiet. It only means there is nothing to offer an amend of.
+	// A repository with no commit yet is fine. It just has nothing to amend.
 	currentHead, _ := head(repo)
 
 	// Every settled turn records its status, whatever else it does, or the next

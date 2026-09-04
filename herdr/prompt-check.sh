@@ -42,8 +42,8 @@ repo="$work/subject"
 mkdir -p "$repo/src"
 git -C "$repo" init -q --initial-branch=main
 
-# Five comments the prompt should delete, because each restates its own line.
-# Five it should keep: three the tooling needs, two that record a why.
+# The planted comments. The two lists at the bottom of this script say which
+# ones are meant to go and which are meant to survive.
 cat > "$repo/src/orders.py" <<'SUBJECT'
 import shutil
 
