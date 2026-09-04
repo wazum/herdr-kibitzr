@@ -11,33 +11,44 @@ import (
 	"path/filepath"
 )
 
-func stateFile(stateDir, repo string) string {
-	sum := sha256.Sum256([]byte(repo))
+// Keyed by agent session, because that is who the counted writes belong to.
+func stateFile(stateDir, session string) string {
+	sum := sha256.Sum256([]byte(session))
 	return filepath.Join(stateDir, hex.EncodeToString(sum[:8])+".json")
 }
 
-// Only a file nobody has written yet means a fresh project. Anything else read
-// as fresh would quietly throw away the window the nudge rule works from.
+// Only a missing file means a session nobody has read yet. Reading anything
+// else that way would throw away the cursor.
 func loadState(path string) (state, error) {
-	content, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return state{}, nil
-	}
-	if err != nil {
-		return state{}, err
-	}
-
 	var loaded state
-	if err := json.Unmarshal(content, &loaded); err != nil {
-		return state{}, fmt.Errorf("unreadable state in %s: %w", path, err)
+	if err := readJSON(path, &loaded); err != nil {
+		return state{}, err
 	}
 	return loaded, nil
 }
 
-// Written beside the real file and renamed over it, so a process that dies
-// mid-write leaves the previous state rather than half of this one.
 func saveState(path string, next state) error {
-	content, err := json.Marshal(next)
+	return writeJSON(path, next)
+}
+
+func readJSON(path string, into any) error {
+	content, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(content, into); err != nil {
+		return fmt.Errorf("unreadable state in %s: %w", path, err)
+	}
+	return nil
+}
+
+// Renamed over the real file, so dying mid-write leaves the old contents rather
+// than half of these.
+func writeJSON(path string, value any) error {
+	content, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}

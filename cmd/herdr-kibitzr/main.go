@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,17 +15,57 @@ import (
 
 const defaultPrompt = `You added comments in your last changes, listed below by file. Review each one. Delete every comment that only restates what the code already says, including single-line ones. Shorten what remains. Keep type annotations and docblocks the tooling needs. Do not change code.`
 
-// The eyes replace the pane's status text in herdr's sidebar. They only show
-// while the pane sits at the turn end that was nudged.
-const badgeTTL = 10 * time.Minute
+// A blink, not a state.
+const badgeTTL = 10 * time.Second
 
 const herdrTimeout = 15 * time.Second
 
 func main() {
-	if err := run(); err != nil {
+	action := run
+	if len(os.Args) > 1 && os.Args[1] == "toggle" {
+		action = toggle
+	}
+	if err := action(); err != nil {
 		fmt.Fprintln(os.Stderr, "kibitzr:", err)
 		os.Exit(1)
 	}
+}
+
+// Per pane, so one pane can be quiet while its siblings in the same repository
+// are watched.
+func toggle() error {
+	stateDir, err := ensureStateDir()
+	if err != nil {
+		return err
+	}
+	paneID := os.Getenv("HERDR_PANE_ID")
+	if paneID == "" {
+		return errors.New("no pane to toggle")
+	}
+
+	nowMuted, err := toggleMute(muteFile(stateDir), paneID)
+	if err != nil {
+		return err
+	}
+
+	word := "watching"
+	if nowMuted {
+		word = "muted"
+	}
+	fmt.Printf("%s · %s\n", paneID, word)
+
+	// The sidebar rather than a notification, because herdr ships with toast
+	// delivery off. No TTL: the mark stands until the pane is unmuted.
+	agent := focusedAgent(os.Getenv("HERDR_PLUGIN_CONTEXT_JSON"))
+	if agent == "" {
+		return nil
+	}
+	if nowMuted {
+		return herdr("pane", "report-metadata", paneID,
+			"--source", "kibitzr", "--display-agent", agent+" 🔇")
+	}
+	return herdr("pane", "report-metadata", paneID,
+		"--source", "kibitzr", "--clear-display-agent")
 }
 
 func run() error {
@@ -39,11 +80,34 @@ func run() error {
 		return nil
 	}
 
-	stateDir := os.Getenv("HERDR_PLUGIN_STATE_DIR")
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+	stateDir, err := ensureStateDir()
+	if err != nil {
 		return err
 	}
-	path := stateFile(stateDir, repo)
+	if muted(muteFile(stateDir), finished.paneID) {
+		fmt.Println("quiet · muted")
+		return nil
+	}
+
+	answer, err := herdrOutput("pane", "get", finished.paneID)
+	if err != nil {
+		return err
+	}
+	pane := readPane(answer)
+
+	// A prompt submitted into a focused pane arrives glued onto whatever the
+	// person was already typing.
+	if pane.focused {
+		fmt.Println("quiet · pane is focused")
+		return nil
+	}
+	if pane.session == "" {
+		fmt.Println("quiet · no agent session to read")
+		return nil
+	}
+	finished.session = pane.session
+
+	path := stateFile(stateDir, finished.session)
 
 	release, locked := acquire(path + ".lock")
 	if !locked {
@@ -52,54 +116,28 @@ func run() error {
 	}
 	defer release()
 
-	current, err := head(repo)
-	if err != nil {
-		fmt.Println("quiet · no commit to measure from")
-		return nil
-	}
-
 	previous, err := loadState(path)
 	if err != nil {
-		// Say so and start over. Staying silent until somebody deletes the file
-		// would be worse than losing one window.
+		// Start over rather than stay silent until somebody deletes the file.
 		fmt.Printf("state discarded · %v\n", err)
 		previous = state{}
 	}
-	if previous.Baseline == "" {
-		fmt.Printf("baseline recorded · %s\n", short(current))
-		return saveState(path, state{Baseline: current})
-	}
 
-	untracked, err := untrackedFiles(repo)
+	added, cursor, err := authorshipFor(finished, repo).additions(previous.Cursor)
 	if err != nil {
-		return err
+		fmt.Printf("quiet · cannot read what %s wrote: %v\n", finished.agent, err)
+		return nil
 	}
-	diff, err := diffFrom(repo, previous.Baseline)
-	if err != nil {
-		return err
-	}
-	comments, count := countAdded(diff, untracked)
+	comments, count := countAdded(added)
 
-	// A second diff only when the agent committed during this turn, so the mark
-	// is stored against the baseline it will next be compared with.
-	sinceHead := count
-	if previous.Baseline != current {
-		headDiff, headErr := diffFrom(repo, current)
-		if headErr != nil {
-			return headErr
-		}
-		_, sinceHead = countAdded(headDiff, untracked)
-	}
-
-	nudge, next := decide(previous, current, count, sinceHead)
+	nudge, next := decide(previous, cursor, count)
 	if !nudge {
-		fmt.Printf("quiet · %d comments · mark %d\n", count, previous.NudgedAtCount)
+		fmt.Printf("quiet · %d comments written\n", count)
 		return saveState(path, next)
 	}
 
-	// Nothing recorded, so the next turn end tries again. Advancing the baseline
-	// here would bury comments the agent committed but was never told about.
-	if err := deliver(finished.paneID, comments); err != nil {
+	// Nothing recorded, so the next turn reads the same writes again and retries.
+	if err := deliver(finished, comments); err != nil {
 		fmt.Printf("quiet · %d comments · not delivered: %v\n", count, err)
 		return nil
 	}
@@ -108,30 +146,50 @@ func run() error {
 	return saveState(path, next)
 }
 
-func countAdded(diff string, untracked map[string]string) (comments map[string][]string, count int) {
-	comments = addedComments(diff, untracked)
+func ensureStateDir() (string, error) {
+	stateDir := os.Getenv("HERDR_PLUGIN_STATE_DIR")
+	if stateDir == "" {
+		return "", errors.New("HERDR_PLUGIN_STATE_DIR is not set")
+	}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return "", err
+	}
+	return stateDir, nil
+}
+
+func countAdded(added []addition) (comments map[string][]string, count int) {
+	comments = addedComments(added)
 	for _, lines := range comments {
 		count += len(lines)
 	}
 	return comments, count
 }
 
-func deliver(paneID string, comments map[string][]string) error {
+func deliver(finished turn, comments map[string][]string) error {
 	prompt, err := promptText()
 	if err != nil {
 		return err
 	}
-	if err := herdr("agent", "prompt", paneID, nudgeText(prompt, comments)); err != nil {
+	if err := herdr("agent", "prompt", finished.paneID, nudgeText(prompt, comments)); err != nil {
 		return err
 	}
-
-	// The nudge already landed, so a missing badge is not a failure.
-	_ = herdr("pane", "report-metadata", paneID,
-		"--source", "kibitzr",
-		"--state-label", "done=👀 done",
-		"--state-label", "idle=👀 idle",
-		"--ttl-ms", strconv.FormatInt(badgeTTL.Milliseconds(), 10))
+	markLooked(finished)
 	return nil
+}
+
+// The agent label is the one piece of text in herdr's default sidebar rows a
+// plugin can change. Built from the agent kind, so two nudges cannot stack two
+// pairs of eyes.
+func markLooked(finished turn) {
+	if finished.agent == "" {
+		return
+	}
+	// The nudge already landed, so a missing badge is not a failure.
+	_ = herdr("pane", "report-metadata", finished.paneID,
+		"--source", "kibitzr",
+		"--display-agent", finished.agent+" 👀",
+		"--token", "kibitzr=👀",
+		"--ttl-ms", strconv.FormatInt(badgeTTL.Milliseconds(), 10))
 }
 
 func promptText() (string, error) {
@@ -150,6 +208,11 @@ func promptText() (string, error) {
 }
 
 func herdr(args ...string) error {
+	_, err := herdrOutput(args...)
+	return err
+}
+
+func herdrOutput(args ...string) (string, error) {
 	binary := os.Getenv("HERDR_BIN_PATH")
 	if binary == "" {
 		binary = "herdr"
@@ -160,14 +223,7 @@ func herdr(args ...string) error {
 
 	out, err := exec.CommandContext(ctx, binary, args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s %s: %w: %s", binary, args[0], err, out)
+		return "", fmt.Errorf("%s %s: %w: %s", binary, args[0], err, out)
 	}
-	return nil
-}
-
-func short(sha string) string {
-	if len(sha) > 7 {
-		return sha[:7]
-	}
-	return sha
+	return string(out), nil
 }

@@ -6,6 +6,33 @@ const doneEvent = `{"event":"pane_agent_status_changed","data":{"type":"pane_age
 
 const paneContext = `{"focused_pane_id":"w1:p2","focused_pane_cwd":"/tmp/project","workspace_id":"w1"}`
 
+func TestReadPaneTakesFocusAndSessionFromOneAnswer(t *testing.T) {
+	answer := `{"result":{"pane":{"pane_id":"w1:p2","focused":true,` +
+		`"agent_session":{"agent":"claude","kind":"id","value":"abc-123"}}}}`
+
+	got := readPane(answer)
+
+	if !got.focused {
+		t.Error("focused was not read")
+	}
+	if got.session != "abc-123" {
+		t.Errorf("session %q, want %q", got.session, "abc-123")
+	}
+}
+
+func TestReadPaneSurvivesAnAnswerItCannotUse(t *testing.T) {
+	for name, answer := range map[string]string{
+		"no session": `{"result":{"pane":{"pane_id":"w1:p2","focused":false}}}`,
+		"no pane":    `{"result":{}}`,
+		"not json":   `nope`,
+	} {
+		got := readPane(answer)
+		if got.focused || got.session != "" {
+			t.Errorf("%s: got %+v, want the zero value", name, got)
+		}
+	}
+}
+
 func TestTurnEndAcceptsOnlySettledStatuses(t *testing.T) {
 	accepted := map[string]bool{"done": true, "idle": true}
 
@@ -45,5 +72,9 @@ func TestTurnEndAcceptsAFinishedAgent(t *testing.T) {
 	}
 	if got.cwd != "/tmp/project" {
 		t.Errorf("cwd %q, want %q", got.cwd, "/tmp/project")
+	}
+	// The kind, not the current label, so two nudges cannot stack two badges.
+	if got.agent != "claude" {
+		t.Errorf("agent %q, want %q", got.agent, "claude")
 	}
 }

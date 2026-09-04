@@ -14,29 +14,17 @@ func skipped(path string) bool {
 	return skippedExtensions[strings.ToLower(filepath.Ext(path))]
 }
 
-func addedComments(diff string, untracked map[string]string) map[string][]string {
+// The comment lines in text an agent wrote, per file. Where the text came from
+// is the caller's problem; here it is just text.
+func addedComments(added []addition) map[string][]string {
 	found := map[string][]string{}
-	path := ""
-	for _, line := range strings.Split(diff, "\n") {
-		if after, ok := strings.CutPrefix(line, "+++ b/"); ok {
-			path = after
+	for _, one := range added {
+		if skipped(one.path) {
 			continue
 		}
-		added, ok := strings.CutPrefix(line, "+")
-		if !ok || path == "" || skipped(path) {
-			continue
-		}
-		if text := strings.TrimSpace(added); isComment(text) {
-			found[path] = append(found[path], text)
-		}
-	}
-	for path, content := range untracked {
-		if skipped(path) {
-			continue
-		}
-		for _, line := range strings.Split(content, "\n") {
+		for _, line := range strings.Split(one.text, "\n") {
 			if text := strings.TrimSpace(line); isComment(text) {
-				found[path] = append(found[path], text)
+				found[one.path] = append(found[one.path], text)
 			}
 		}
 	}

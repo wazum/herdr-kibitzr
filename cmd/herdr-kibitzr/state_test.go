@@ -9,7 +9,7 @@ import (
 func TestStateRoundTrips(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "project.json")
 
-	if err := saveState(path, state{Baseline: "sha1", NudgedAtCount: 4}); err != nil {
+	if err := saveState(path, state{Cursor: "42", AwaitingCleanup: true}); err != nil {
 		t.Fatalf("saveState: %v", err)
 	}
 
@@ -17,8 +17,8 @@ func TestStateRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadState: %v", err)
 	}
-	if loaded.Baseline != "sha1" || loaded.NudgedAtCount != 4 {
-		t.Errorf("got %+v, want sha1 and 4", loaded)
+	if loaded.Cursor != "42" || !loaded.AwaitingCleanup {
+		t.Errorf("got %+v, want cursor 42 and a pending cleanup", loaded)
 	}
 }
 
@@ -36,7 +36,7 @@ func TestLoadStateTreatsAMissingFileAsAFreshProject(t *testing.T) {
 // nudge rule depends on, so it has to be reported rather than assumed.
 func TestLoadStateReportsUnreadableState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "project.json")
-	if err := os.WriteFile(path, []byte(`{"baseline":"sha1","nudg`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"cursor":"42","awaiting`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -49,7 +49,7 @@ func TestSaveStateLeavesNoPartialFileBehind(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "project.json")
 
-	if err := saveState(path, state{Baseline: "sha1"}); err != nil {
+	if err := saveState(path, state{Cursor: "7"}); err != nil {
 		t.Fatalf("saveState: %v", err)
 	}
 

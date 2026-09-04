@@ -11,3 +11,11 @@ command = ["bash", "herdr/install.sh"]
 [[events]]
 on = "pane.agent_status_changed"
 command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-kibitzr\""]
+
+# Every agent pane is watched on install. This silences one of them, and says so
+# in a notification. Bind it to a key: see the README.
+[[actions]]
+id = "toggle"
+title = "kibitzr: watch or mute this pane"
+contexts = ["pane", "global"]
+command = ["sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-kibitzr\" toggle"]

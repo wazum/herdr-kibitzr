@@ -13,6 +13,7 @@ import (
 const (
 	maxFileBytes      = 1 << 20
 	maxUntrackedFiles = 300
+	maxLogLineBytes   = 4 << 20
 )
 
 // A hung git call would hold the lock and one of herdr's 32 plugin slots.
@@ -49,8 +50,7 @@ func diffFrom(dir, ref string) (string, error) {
 		"--no-color", "--no-ext-diff", "--no-textconv", ref)
 }
 
-// One scan serves every diff base, because what git does not track does not
-// depend on which commit a diff starts from.
+// What git does not track does not depend on which commit a diff starts from.
 func untrackedFiles(dir string) (map[string]string, error) {
 	// -z because a filename may contain a newline.
 	listed, err := git(dir, "ls-files", "--others", "--exclude-standard", "-z")

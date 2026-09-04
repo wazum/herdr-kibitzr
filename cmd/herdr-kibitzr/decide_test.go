@@ -3,90 +3,55 @@ package main
 import "testing"
 
 func TestDecideNudgesOnTheFirstAddedComment(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1"}, "sha1", 1, 1)
+	nudge, next := decide(state{Cursor: "10"}, "20", 1)
 
 	if !nudge {
 		t.Error("did not nudge for one added comment")
 	}
-	if next.NudgedAtCount != 1 {
-		t.Errorf("mark %d, want 1", next.NudgedAtCount)
+	if next.Cursor != "20" {
+		t.Errorf("cursor %q, want %q", next.Cursor, "20")
+	}
+	if !next.AwaitingCleanup {
+		t.Error("a nudge has to grant the next turn its cleanup pass")
 	}
 }
 
-func TestDecideStaysQuietWhenTheAgentKeptSomeComments(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha1", 2, 2)
+func TestDecideStaysQuietWhenTheAgentWroteNoComments(t *testing.T) {
+	nudge, next := decide(state{Cursor: "10"}, "20", 0)
 
 	if nudge {
-		t.Error("nudged again after a cleanup left 2 of 5 comments")
+		t.Error("nudged about nothing")
 	}
-	if next.NudgedAtCount != 5 {
-		t.Errorf("mark %d, want the high-water mark 5 kept", next.NudgedAtCount)
+	if next.Cursor != "20" {
+		t.Errorf("cursor %q, want the turn to be marked read", next.Cursor)
+	}
+	if next.AwaitingCleanup {
+		t.Error("a quiet turn owes the agent nothing")
 	}
 }
 
-func TestDecideStaysQuietWhenTheAgentIgnoredTheNudge(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha1", 5, 5)
+// The loop that mattered in the field: the reply to a nudge is itself written
+// text, so judging that turn by its count nudges about the cleanup.
+func TestDecideGivesTheAgentOneUncontestedCleanupTurn(t *testing.T) {
+	nudge, next := decide(state{Cursor: "20", AwaitingCleanup: true}, "30", 3)
 
 	if nudge {
-		t.Error("nudged again for the same 5 comments")
+		t.Error("nudged about the comments the previous nudge produced")
 	}
-	if next.NudgedAtCount != 5 {
-		t.Errorf("mark %d, want 5", next.NudgedAtCount)
+	if next.AwaitingCleanup {
+		t.Error("the cleanup pass was not spent")
+	}
+	if next.Cursor != "30" {
+		t.Errorf("cursor %q, want the cleanup turn marked read", next.Cursor)
 	}
 }
 
-func TestDecideNudgesAgainWhenNewCommentsArriveAfterACleanup(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha1", 6, 6)
+func TestDecideNudgesAgainAfterTheCleanupTurnIsSpent(t *testing.T) {
+	_, spent := decide(state{Cursor: "20", AwaitingCleanup: true}, "30", 3)
+
+	nudge, _ := decide(spent, "40", 2)
 
 	if !nudge {
-		t.Error("did not nudge when the count rose above the mark")
-	}
-	if next.NudgedAtCount != 6 {
-		t.Errorf("mark %d, want 6", next.NudgedAtCount)
-	}
-}
-
-// A mark counted from the old baseline cannot be compared against the new one.
-// Storing it unconverted would swallow every later comment until the count
-// climbed past it again.
-func TestDecideRebasesTheMarkWhenANudgedTurnCommitted(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1"}, "sha2", 9, 3)
-
-	if !nudge {
-		t.Error("did not nudge for 9 added comments")
-	}
-	if next.Baseline != "sha2" {
-		t.Errorf("baseline %q, want %q", next.Baseline, "sha2")
-	}
-	if next.NudgedAtCount != 3 {
-		t.Errorf("mark %d, want the 3 still measurable from sha2", next.NudgedAtCount)
-	}
-}
-
-func TestDecideRebasesTheMarkWhenAQuietTurnCommitted(t *testing.T) {
-	nudge, next := decide(state{Baseline: "sha1", NudgedAtCount: 5}, "sha2", 5, 2)
-
-	if nudge {
-		t.Error("nudged for comments already covered by an earlier nudge")
-	}
-	if next.Baseline != "sha2" {
-		t.Errorf("baseline %q, want %q", next.Baseline, "sha2")
-	}
-	if next.NudgedAtCount != 2 {
-		t.Errorf("mark %d, want the 2 still measurable from sha2", next.NudgedAtCount)
-	}
-}
-
-func TestDecideFirstRunOnlyRecordsTheBaseline(t *testing.T) {
-	nudge, next := decide(state{}, "sha1", 7, 7)
-
-	if nudge {
-		t.Error("nudged on the first turn end seen for a project")
-	}
-	if next.Baseline != "sha1" {
-		t.Errorf("baseline %q, want %q", next.Baseline, "sha1")
-	}
-	if next.NudgedAtCount != 0 {
-		t.Errorf("mark %d, want 0", next.NudgedAtCount)
+		t.Error("did not nudge for comments written after the cleanup")
 	}
 }

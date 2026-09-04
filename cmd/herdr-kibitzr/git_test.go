@@ -5,77 +5,66 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
-func TestReadsChangesSinceTheBaseline(t *testing.T) {
+func TestDiffFromReportsAddedLinesForATrackedFile(t *testing.T) {
 	repo := newRepo(t)
 	write(t, repo, "main.go", "package main\n")
-	baseline := commit(t, repo)
+	commit(t, repo)
 	write(t, repo, "main.go", "package main\n\n// added later\n")
-	write(t, repo, "extra.go", "// brand new\n")
 
-	got, _ := countAdded(diffOrFail(t, repo, baseline), untrackedOrFail(t, repo))
+	got := addedByFile(diffOrFail(t, repo, "HEAD"))
 
-	assertComments(t, got, map[string][]string{
-		"main.go":  {"// added later"},
-		"extra.go": {"// brand new"},
-	})
-}
-
-func TestSeesCommentsTheAgentCommittedDuringTheTurn(t *testing.T) {
-	repo := newRepo(t)
-	write(t, repo, "main.go", "package main\n")
-	baseline := commit(t, repo)
-
-	write(t, repo, "main.go", "package main\n\n// committed mid-turn\n")
-	if commit(t, repo) == baseline {
-		t.Fatal("the commit did not move HEAD")
+	if !slices.Contains(got["main.go"], "// added later") {
+		t.Errorf("got %v, want the added comment among the added lines", got)
 	}
-
-	got, _ := countAdded(diffOrFail(t, repo, baseline), untrackedOrFail(t, repo))
-
-	assertComments(t, got, map[string][]string{"main.go": {"// committed mid-turn"}})
 }
 
-func TestReadsAPathThatIsNotPlainAscii(t *testing.T) {
+func TestDiffFromReadsAPathThatIsNotPlainAscii(t *testing.T) {
 	repo := newRepo(t)
 	write(t, repo, "src/Bestellung.go", "package src\n")
-	baseline := commit(t, repo)
+	commit(t, repo)
 	write(t, repo, "src/Bestellung.go", "package src\n\n// Grüße aus München\n")
-	write(t, repo, "src/Ünïcode Datei.go", "// auch hier\n")
 
-	got, _ := countAdded(diffOrFail(t, repo, baseline), untrackedOrFail(t, repo))
+	got := addedByFile(diffOrFail(t, repo, "HEAD"))
 
-	assertComments(t, got, map[string][]string{
-		"src/Bestellung.go":    {"// Grüße aus München"},
-		"src/Ünïcode Datei.go": {"// auch hier"},
-	})
+	if !slices.Contains(got["src/Bestellung.go"], "// Grüße aus München") {
+		t.Errorf("got %v, want the non-ASCII path recognised", got)
+	}
 }
 
-// A deletion's header is `+++ /dev/null`. Left unrecognised, the following
-// hunk would be credited to whichever file was named before it.
-func TestDeletingAFileCreditsNothingToTheFileBefore(t *testing.T) {
+// A deletion's header is `+++ /dev/null`, and with no context lines it carries
+// no added lines, so nothing can be credited to the file named before it.
+func TestDiffFromCreditsNothingToTheFileBeforeADeletion(t *testing.T) {
 	repo := newRepo(t)
 	write(t, repo, "a.go", "package a\n")
 	write(t, repo, "b.go", "package b\n// a comment that is about to go\n")
-	baseline := commit(t, repo)
+	commit(t, repo)
 
 	if err := os.Remove(filepath.Join(repo, "b.go")); err != nil {
 		t.Fatal(err)
 	}
-	write(t, repo, "a.go", "package a\n// the only added comment\n")
+	write(t, repo, "a.go", "package a\n// the only added line\n")
 
-	got, count := countAdded(diffOrFail(t, repo, baseline), untrackedOrFail(t, repo))
+	got := addedByFile(diffOrFail(t, repo, "HEAD"))
 
-	if count != 1 {
-		t.Errorf("count %d, want 1: %v", count, got)
+	if !slices.Contains(got["a.go"], "// the only added line") {
+		t.Errorf("a.go: got %v", got["a.go"])
 	}
-	assertComments(t, got, map[string][]string{"a.go": {"// the only added comment"}})
+	if len(got) != 1 {
+		t.Errorf("got %v, want a.go alone", got)
+	}
+	for _, line := range got["a.go"] {
+		if strings.Contains(line, "/dev/null") {
+			t.Errorf("a.go: the deletion header was read as content: %q", line)
+		}
+	}
 }
 
-func TestSkipsHugeUntrackedFiles(t *testing.T) {
+func TestUntrackedFilesSkipsHugeFiles(t *testing.T) {
 	repo := newRepo(t)
 	write(t, repo, "keep.go", "package main\n")
 	commit(t, repo)
@@ -86,7 +75,7 @@ func TestSkipsHugeUntrackedFiles(t *testing.T) {
 	}
 }
 
-func TestSkipsUntrackedSymlinks(t *testing.T) {
+func TestUntrackedFilesSkipsSymlinks(t *testing.T) {
 	repo := newRepo(t)
 	write(t, repo, "keep.go", "package main\n")
 	commit(t, repo)
@@ -107,7 +96,7 @@ func TestSkipsUntrackedSymlinks(t *testing.T) {
 
 // The quota exists to bound reading. Files that are discarded anyway must not
 // spend it, or one generated directory hides the source beside it.
-func TestSkippedExtensionsDoNotSpendTheQuota(t *testing.T) {
+func TestUntrackedFilesDoesNotSpendTheQuotaOnSkippedExtensions(t *testing.T) {
 	repo := newRepo(t)
 	write(t, repo, "keep.go", "package main\n")
 	commit(t, repo)
@@ -124,7 +113,7 @@ func TestSkippedExtensionsDoNotSpendTheQuota(t *testing.T) {
 	}
 }
 
-func TestStopsReadingAfterTooManyUntrackedFiles(t *testing.T) {
+func TestUntrackedFilesStopsAtTheQuota(t *testing.T) {
 	repo := newRepo(t)
 	write(t, repo, "keep.go", "package main\n")
 	commit(t, repo)

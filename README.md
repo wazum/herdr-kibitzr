@@ -18,8 +18,7 @@ Every coding agent comments too much. You can put "no useless comments" in
 counter` above `i++`. The instruction competes with everything else in the
 prompt and loses.
 
-kibitzr waits until the turn is over, looks at what landed in git, and hands the
-comments back:
+kibitzr waits until the turn is over and hands the comments back:
 
 ```
 › You added comments in your last changes, listed below by file. Review each
@@ -42,30 +41,60 @@ it hasn't written yet. You edit the wording once and then stay out of it.
 herdr plugin install wazum/herdr-kibitzr
 ```
 
-Nothing to bind, no pane to open. It starts working on the next agent turn that
-ends. Needs herdr 0.8.0 or newer on macOS or Linux, and git.
+Nothing to bind, no pane to open. It starts on the next agent turn that ends.
+Needs herdr 0.8.0 or newer on macOS or Linux, and git.
 
 ## How it decides
 
-Every time an agent pane settles to `done` or `idle`, kibitzr diffs that pane's
-repository against the commit it recorded at the previous turn end. Measuring
-from there rather than from `HEAD` means comments the agent committed mid-turn
-still count. Comment lines in files git doesn't track yet count too.
+When an agent pane settles to `done` or `idle`, kibitzr reads what **that agent**
+wrote since it last looked, and prompts it if any of it was a comment. Not what
+changed in the repository. Two panes can share a repository, and one can be
+editing a project rooted somewhere else, so "this tree has uncommitted comments"
+says nothing about who wrote them.
 
-It prompts the agent when that count is higher than at the last nudge, which is
-what stops it repeating itself. Nudged about nine comments and the agent kept
-two? The count went down, so it says nothing. Wrote four more later? The count
-passed the mark, so it speaks again. A commit resets the mark, because what is
-committed is part of the baseline now.
+Claude Code records the literal text of every edit, so for Claude this is exact.
+Codex records only the shell it ran, so it falls back to files written while that
+agent was working. That is weaker: a person typing in an editor during the same
+stretch looks the same, and so does a second agent in the same repository.
 
-While a nudged pane sits at its turn end, its sidebar row wears the eyes:
+A nudge hands the next turn to the agent unconditionally. That turn is the agent
+acting on what it was told, and acting on it usually means rewriting a comment
+rather than deleting it, which is freshly written text again. Judging that turn
+would nudge about the cleanup.
+
+Two panes are never touched: one you have focused, because a prompt would land
+on whatever you were half way through typing, and one whose writes predate
+kibitzr, so a session that has just opened is not blamed for the tree it found.
+
+Why it fired, or didn't, is in `herdr plugin log list --plugin wazum.kibitzr`.
+
+## What you see
+
+A pane that was just asked about its comments wears them for ten seconds:
 
 ```
 ▾ kibitzr
-  ● claude  👀 done
+  ● claude 👀
 ```
 
-Why it fired, or didn't, is in `herdr plugin log list --plugin wazum.kibitzr`.
+The eyes ride on the agent label, the one piece of text in herdr's default
+sidebar rows a plugin can change, so this needs no configuration.
+
+## Muting a pane
+
+Every agent pane is watched from the moment you install it. To leave one alone,
+bind the toggle and press it in that pane:
+
+```toml
+[[keys.command]]
+key = "prefix+m"
+type = "plugin_action"
+command = "wazum.kibitzr.toggle"
+description = "kibitzr: watch or mute this pane"
+```
+
+A muted pane wears `🔇` on its agent label until you unmute it. Muting is per
+pane, so a second pane in the same project carries on being watched.
 
 ## Configure
 
@@ -76,41 +105,41 @@ added comments underneath whatever you write, so keep the file to prose.
 ## What counts as a comment
 
 A line whose first non-blank characters are `//`, `/*`, `<!--`, `#`, or an
-asterisk continuing a block comment. Three things that look like markers are
-excluded, because each would otherwise fire on ordinary code:
+asterisk continuing a block comment. Three lookalikes are excluded, because each
+fires on ordinary code:
 
 - a shebang, `#!/usr/bin/env bash`
-- a preprocessor directive, `#include` or `#define` and the rest of that family
-- a dereference, `*ptr = value`, which is why an asterisk has to be followed by
-  a space, a slash, or nothing
+- a preprocessor directive, `#include`, `#define` and that family
+- a dereference, `*ptr = value`, which is why an asterisk needs a space, a
+  slash, or nothing after it
 
 Prose and data files are skipped by extension: `.md`, `.txt`, `.rst`, `.yml`,
-`.yaml`, `.json`, `.toml`, `.lock`, `.csv`, `.svg`.
-
-Trailing comments after code are not counted. Finding them without a real
-tokenizer flags every URL and every `#` inside a string, and the agent reviews
-the whole file anyway once it knows which files to look at.
+`.yaml`, `.json`, `.toml`, `.lock`, `.csv`, `.svg`. Trailing comments after code
+are not counted, because finding them without a tokenizer flags every URL and
+every `#` inside a string.
 
 The detector only decides whether to speak. Your `prompt.md` decides what to
 keep, which is why the default text protects type annotations and docblocks.
 
 ## What it gets wrong
 
-A comment you typed yourself between two turn ends is blamed on the agent. The
-window is small, since the hook only runs when an agent finishes and only looks
-at what changed since it last finished, but it is real.
+Only Claude gets exact attribution. For any other agent, a comment you typed
+yourself while it was working is blamed on it, and so is one written by a second
+agent in the same repository. Adding an agent is one adapter behind one
+interface, so this improves as agents start recording their own edits.
 
-A prompt can also land while you are typing. A turn end in the pane you are
-looking at reports `idle`, and kibitzr prompts it. If you had half a sentence in
-the composer, the nudge is appended to it and submitted together. Detecting a
-non-empty composer would mean parsing each agent's UI, so this is accepted
-rather than solved.
+Cost runs in a short-lived child process that cannot touch herdr's rendering,
+terminal parsing or detection:
 
-Cost is low enough to ignore: a status change that isn't a turn end costs about
-4 ms and runs no git at all, and a turn end on a 500-file repository costs about
-70 ms in a child process, where it can't touch herdr's rendering or terminal
-parsing. Untracked files are read up to 300 files and 1 MB each, so a project
-scaffolded before anyone wrote a `.gitignore` can't turn into an unbounded read.
+| event | measured |
+| --- | --- |
+| not a turn end: no herdr call, no git | 4 ms |
+| a turn end, Claude, 400-entry session log | 19 ms |
+| a turn end, Codex, 500-file repository | 48 ms |
+
+Reads are bounded at 300 untracked files of 1 MB each, and every git and herdr
+call runs under a timeout, so neither a scaffolded project nor a hung call can
+hold a plugin slot.
 
 ## Licence
 
