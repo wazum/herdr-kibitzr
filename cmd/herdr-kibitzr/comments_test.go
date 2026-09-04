@@ -113,6 +113,47 @@ func TestAddedCommentsIgnoresAssignedMultilineStrings(t *testing.T) {
 	assertComments(t, got, map[string][]string{"query.py": {`"""`}})
 }
 
+// An edit replaces a region, so its new text carries the unchanged lines around
+// the change. Reported from the field: a nudge listed .git/info/exclude because
+// git's own boilerplate comments sat in the region the agent edited.
+func TestAddedCommentsIgnoresCommentsAnEditOnlyCarriedAlong(t *testing.T) {
+	got := addedComments([]addition{{
+		path: ".git/info/exclude",
+		replaced: "# exclude patterns (uncomment them if you want to use them):\n" +
+			"# *.[oa]\n" +
+			"# *~\n",
+		text: "# exclude patterns (uncomment them if you want to use them):\n" +
+			"# *.[oa]\n" +
+			"# *~\n" +
+			"\n" +
+			"probity.config.ts\n" +
+			".claude/settings.local.json\n",
+	}})
+
+	assertComments(t, got, map[string][]string{})
+}
+
+func TestAddedCommentsKeepsACommentAddedInsideAnEdit(t *testing.T) {
+	got := addedComments([]addition{{
+		path:     "src/Order.php",
+		replaced: "private int $total;\n",
+		text:     "/** @var int */\nprivate int $total;\n",
+	}})
+
+	assertComments(t, got, map[string][]string{"src/Order.php": {"/** @var int */"}})
+}
+
+// One of two identical lines is new, so counting matters, not just presence.
+func TestAddedCommentsCountsARepeatedCommentOnce(t *testing.T) {
+	got := addedComments([]addition{{
+		path:     "main.go",
+		replaced: "// same\n",
+		text:     "// same\n// same\n",
+	}})
+
+	assertComments(t, got, map[string][]string{"main.go": {"// same"}})
+}
+
 func TestAddedCommentsGathersEveryWriteToOneFile(t *testing.T) {
 	got := addedComments([]addition{
 		{path: "main.go", text: "// first edit\n"},

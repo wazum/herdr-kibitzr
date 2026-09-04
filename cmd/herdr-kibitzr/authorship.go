@@ -11,11 +11,15 @@ type authorship interface {
 	additions(cursor string) (added []addition, next string, err error)
 }
 
-// For an edit the replacement text, for a new file the whole content, so every
-// line of it is a line the agent wrote.
+// For an edit the replacement text, for a new file the whole content.
+//
+// An edit replaces a region, so text carries the unchanged lines around the
+// change as well. replaced holds what was there before, and a line in both is
+// a line the agent only carried along.
 type addition struct {
-	path string
-	text string
+	path     string
+	text     string
+	replaced string
 }
 
 // Claude records the literal text of every edit it makes. Nothing else does.

@@ -64,6 +64,38 @@ func TestDiffFromCreditsNothingToTheFileBeforeADeletion(t *testing.T) {
 	}
 }
 
+// Amending something already published rewrites history somebody else may
+// have, so only a commit no remote carries is offered.
+func TestAmendableOnlyWhileACommitIsUnpushed(t *testing.T) {
+	origin := newRepo(t)
+	write(t, origin, "main.go", "package main\n")
+	commit(t, origin)
+
+	clone := t.TempDir()
+	runGit(t, clone, "clone", "-q", origin, clone)
+	pushed, err := head(clone)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if amendable(clone, pushed) {
+		t.Error("offered to amend a commit the remote already has")
+	}
+
+	write(t, clone, "main.go", "package main\n// local only\n")
+	local := commit(t, clone)
+
+	if !amendable(clone, local) {
+		t.Error("refused to amend a commit no remote has")
+	}
+}
+
+func TestAmendableSaysNoWithoutARemoteAnswer(t *testing.T) {
+	if amendable(t.TempDir(), "deadbeef") {
+		t.Error("offered to amend from a directory that is not a repository")
+	}
+}
+
 func TestUntrackedFilesSkipsHugeFiles(t *testing.T) {
 	repo := newRepo(t)
 	write(t, repo, "keep.go", "package main\n")

@@ -22,13 +22,18 @@ log="$work/claude/-project/session-1.jsonl"
 mkdir -p "$(dirname "$log")"
 : > "$log"
 
+# An edit carries the lines around the change, so the third argument is what it
+# replaced. Comments in both are ones the agent only carried along.
 wrote() {
-	local path="$1" text="$2"
+	local path="$1" text="$2" replaced="${3:-}"
+	# \n arrives as two characters from bash, so the fixtures say what they mean.
 	python3 -c '
 import json,sys
+lines = lambda s: s.replace("\\n", "\n")
 print(json.dumps({"type":"assistant","message":{"content":[
-  {"type":"tool_use","name":"Edit","input":{"file_path":sys.argv[1],"new_string":sys.argv[2]}}]}}))
-' "$path" "$text" >> "$log"
+  {"type":"tool_use","name":"Edit","input":{"file_path":sys.argv[1],
+   "new_string":lines(sys.argv[2]),"old_string":lines(sys.argv[3])}}]}}))
+' "$path" "$text" "$replaced" >> "$log"
 }
 
 calls="$work/herdr-calls.log"
@@ -146,6 +151,16 @@ expect "eyes ride on the agent label" \
 	"report-metadata w1:p2 --source kibitzr --display-agent claude 👀" "$(cat "$calls")"
 expect "prompt file seeded" "Delete every comment" "$(cat "$HERDR_PLUGIN_CONFIG_DIR/prompt.md")"
 
+# Reported from the field: an edit carries the lines around the change, so
+# comments already in the file were counted as newly written.
+wrote "$repo/.gitignore" \
+	"# exclude patterns:\n# *.[oa]\n\nprobity.config.ts" \
+	"# exclude patterns:\n# *.[oa]"
+: > "$calls"
+expect "comments an edit only carried along are not counted" \
+	"0 comments written" "$(turn)"
+refuse_prompt_calls "and prompts nobody"
+
 # A title or token change repeats the status kibitzr already recorded. Acting on
 # one is what dropped a prompt into a composer somebody was typing in.
 wrote "$repo/src/Money.php" "// written between two turns"
@@ -179,6 +194,17 @@ refuse_prompt_calls "and prompts nobody"
 unset HERDR_COMPOSER_TYPED
 expect "and the nudge arrives once the line is clear" \
 	"w1:p2 claude · nudged" "$(turn)"
+
+# An agent that commits before its turn ends is nudged afterwards, so the fix
+# belongs in that commit rather than on top of it.
+spend_cleanup_pass
+wrote "$repo/main.go" "// written and then committed"
+printf '\n// written and then committed\n' >> "$repo/main.go"
+git -C "$repo" add -A
+git -C "$repo" -c user.email=t@example.com -c user.name=t commit -q -m committed
+: > "$calls"
+expect "a commit during the turn nudges" "w1:p2 claude · nudged" "$(turn)"
+expect "and the prompt asks for an amend" "amend it" "$(cat "$calls")"
 
 # A nudge the agent never received is read again next turn rather than lost.
 spend_cleanup_pass

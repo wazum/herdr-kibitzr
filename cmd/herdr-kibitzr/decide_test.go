@@ -24,6 +24,24 @@ func TestSettledOnlyOnAChangeOfStatus(t *testing.T) {
 	}
 }
 
+func TestCommittedDuringReportsOnlyAMovedHead(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		last string
+		now  string
+		want string
+	}{
+		{"the agent committed", "sha1", "sha2", "sha2"},
+		{"nothing was committed", "sha1", "sha1", ""},
+		{"no head recorded yet", "", "sha1", ""},
+	} {
+		got := committedDuring(state{LastHead: testCase.last}, testCase.now)
+		if got != testCase.want {
+			t.Errorf("%s: got %q, want %q", testCase.name, got, testCase.want)
+		}
+	}
+}
+
 func TestDecideNudgesOnTheFirstAddedComment(t *testing.T) {
 	nudge, next := decide(state{Cursor: "10"}, "20", 1)
 

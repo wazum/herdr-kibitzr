@@ -74,8 +74,10 @@ func writesIn(source io.Reader) ([]addition, error) {
 						Path    string `json:"file_path"`
 						Content string `json:"content"`
 						New     string `json:"new_string"`
+						Old     string `json:"old_string"`
 						Edits   []struct {
 							New string `json:"new_string"`
+							Old string `json:"old_string"`
 						} `json:"edits"`
 					} `json:"input"`
 				} `json:"content"`
@@ -95,10 +97,14 @@ func writesIn(source io.Reader) ([]addition, error) {
 			case "Write":
 				added = append(added, addition{path: input.Path, text: input.Content})
 			case "Edit":
-				added = append(added, addition{path: input.Path, text: input.New})
+				added = append(added, addition{
+					path: input.Path, text: input.New, replaced: input.Old,
+				})
 			case "MultiEdit":
 				for _, edit := range input.Edits {
-					added = append(added, addition{path: input.Path, text: edit.New})
+					added = append(added, addition{
+						path: input.Path, text: edit.New, replaced: edit.Old,
+					})
 				}
 			}
 		}

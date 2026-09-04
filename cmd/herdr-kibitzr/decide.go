@@ -4,6 +4,7 @@ type state struct {
 	Cursor          string `json:"cursor"`
 	AwaitingCleanup bool   `json:"awaiting_cleanup"`
 	LastStatus      string `json:"last_status"`
+	LastHead        string `json:"last_head"`
 }
 
 // Herdr sends the same event when a pane's title or tokens change. Acting on
@@ -12,9 +13,19 @@ func settled(prev state, status string) bool {
 	return prev.LastStatus != status
 }
 
-func record(next state, status string) state {
+func record(next state, status, head string) state {
 	next.LastStatus = status
+	next.LastHead = head
 	return next
+}
+
+// The commit an agent made during the turn, if it made one. Nudged afterwards,
+// the agent would otherwise leave its fix uncommitted on top of the slop.
+func committedDuring(prev state, head string) string {
+	if prev.LastHead == "" || prev.LastHead == head {
+		return ""
+	}
+	return head
 }
 
 // count covers only what this agent wrote since the cursor, so every comment

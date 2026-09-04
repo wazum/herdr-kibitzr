@@ -1,7 +1,7 @@
 BINARY := bin/herdr-kibitzr
 GOBIN  := $(shell go env GOPATH)/bin
 
-.PHONY: all build test race smoke mutate fmt fmt-check lint vuln qa clean tools
+.PHONY: all build test race smoke mutate prompt-check fmt fmt-check lint vuln qa clean tools
 
 all: qa build
 
@@ -19,6 +19,10 @@ smoke:
 
 mutate:
 	bash herdr/mutate.sh
+
+# Spends a real agent turn, so it stays out of qa and CI.
+prompt-check:
+	bash herdr/prompt-check.sh
 
 fmt:
 	$(GOBIN)/golangci-lint fmt

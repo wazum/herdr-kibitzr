@@ -13,7 +13,15 @@ import (
 	"time"
 )
 
-const defaultPrompt = `You added comments in your last changes, listed below by file. Review each one. Delete every comment that only restates what the code already says, including single-line ones. Shorten what remains. Keep type annotations and docblocks the tooling needs. Do not change code.`
+const defaultPrompt = `You added comments in your last changes, listed below by file. Review each one.
+
+Delete every comment that only restates what the code already says, including
+single-line ones. Shorten what remains. Keep type annotations and docblocks the
+tooling needs, and keep a comment that records why something is the way it is.
+
+This is mechanical. Do not analyse, just read each comment and edit. Change no
+code. Some files may hold no comments of yours at all, in which case say so and
+leave them alone.`
 
 const badgeTTL = 10 * time.Second
 
@@ -117,17 +125,21 @@ func run() error {
 		return nil
 	}
 
+	// Not every repository has a commit yet, and that is no reason to stay
+	// quiet. It only means there is nothing to offer an amend of.
+	currentHead, _ := head(repo)
+
 	// Every settled turn records its status, whatever else it does, or the next
 	// one cannot tell a turn end from a title change.
 	if muted(muteFile(stateDir), finished.paneID) {
 		say(finished, "quiet · muted")
-		return saveState(path, record(previous, finished.status))
+		return saveState(path, record(previous, finished.status, currentHead))
 	}
 
 	added, cursor, err := authorshipFor(finished, repo).additions(previous.Cursor)
 	if err != nil {
 		say(finished, "quiet · cannot read what %s wrote: %v", finished.agent, err)
-		return saveState(path, record(previous, finished.status))
+		return saveState(path, record(previous, finished.status, currentHead))
 	}
 	comments, count := countAdded(added)
 
@@ -138,23 +150,23 @@ func run() error {
 		} else {
 			say(finished, "quiet · %d comments written", count)
 		}
-		return saveState(path, record(next, finished.status))
+		return saveState(path, record(next, finished.status, currentHead))
 	}
 
 	// The cursor stays put on both paths below, so the next turn reads the same
 	// writes and tries again.
 	if composerFor(finished).busy() {
 		say(finished, "quiet · %d comments · somebody is typing", count)
-		return saveState(path, record(previous, finished.status))
+		return saveState(path, record(previous, finished.status, currentHead))
 	}
 
-	if err := deliver(finished, comments); err != nil {
+	if err := deliver(finished, comments, amendTarget(previous, currentHead, repo)); err != nil {
 		say(finished, "quiet · %d comments · not delivered: %v", count, err)
-		return saveState(path, record(previous, finished.status))
+		return saveState(path, record(previous, finished.status, currentHead))
 	}
 
 	say(finished, "nudged · %d comments · %d files", count, len(comments))
-	return saveState(path, record(next, finished.status))
+	return saveState(path, record(next, finished.status, currentHead))
 }
 
 // Every pane on the server writes to one plugin log, so every line has to say
@@ -182,16 +194,26 @@ func countAdded(added []addition) (comments map[string][]string, count int) {
 	return comments, count
 }
 
-func deliver(finished *turn, comments map[string][]string) error {
+func deliver(finished *turn, comments map[string][]string, amend string) error {
 	prompt, err := promptText()
 	if err != nil {
 		return err
 	}
-	if err := herdr("agent", "prompt", finished.paneID, nudgeText(prompt, comments)); err != nil {
+	if err := herdr("agent", "prompt", finished.paneID, nudgeText(prompt, comments, amend)); err != nil {
 		return err
 	}
 	markLooked(finished)
 	return nil
+}
+
+// Only a commit the agent made during this turn, and only while no remote has
+// it. Amending anything published would rewrite history somebody else may hold.
+func amendTarget(previous state, currentHead, repo string) string {
+	commit := committedDuring(previous, currentHead)
+	if commit == "" || !amendable(repo, commit) {
+		return ""
+	}
+	return commit[:min(len(commit), 12)]
 }
 
 // The agent label is the one piece of text a plugin can change in herdr's

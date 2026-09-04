@@ -23,7 +23,11 @@ func TestClaudeLogReportsOnlyWhatWasWritten(t *testing.T) {
 	}
 
 	want := []addition{
-		{path: "/repo/src/Order.php", text: "/** @var int */\nprivate int $total;"},
+		{
+			path:     "/repo/src/Order.php",
+			text:     "/** @var int */\nprivate int $total;",
+			replaced: "private int $total;",
+		},
 		{path: "/repo/src/New.php", text: "<?php\n// fresh\nclass New {}\n"},
 	}
 	assertAdditions(t, added, want)

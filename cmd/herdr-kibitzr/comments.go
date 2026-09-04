@@ -21,13 +21,31 @@ func addedComments(added []addition) map[string][]string {
 		if skipped(one.path) {
 			continue
 		}
+		// Counted, not just matched: one of two identical lines can be new.
+		carried := commentTally(one.replaced)
 		for _, line := range strings.Split(one.text, "\n") {
-			if text := strings.TrimSpace(line); isComment(text) {
-				found[one.path] = append(found[one.path], text)
+			text := strings.TrimSpace(line)
+			if !isComment(text) {
+				continue
 			}
+			if carried[text] > 0 {
+				carried[text]--
+				continue
+			}
+			found[one.path] = append(found[one.path], text)
 		}
 	}
 	return found
+}
+
+func commentTally(text string) map[string]int {
+	tally := map[string]int{}
+	for _, line := range strings.Split(text, "\n") {
+		if trimmed := strings.TrimSpace(line); isComment(trimmed) {
+			tally[trimmed]++
+		}
+	}
+	return tally
 }
 
 func isComment(text string) bool {

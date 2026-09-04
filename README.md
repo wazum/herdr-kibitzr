@@ -68,7 +68,13 @@ on one is how a prompt ends up glued to a sentence you were half way through
 typing.
 
 Nothing an agent wrote before kibitzr started watching it is counted either, so
-a session that has just opened is not blamed for the tree it found.
+a session that has just opened is not blamed for the tree it found. Nor are the
+comments an edit merely carried along, since an edit replaces a whole region and
+its new text repeats the unchanged lines around the change.
+
+If the agent committed during that turn and no remote has the commit yet, the
+prompt names it and asks for an amend, so the fix lands where the slop is
+instead of on top of it.
 
 Why it fired, or didn't, is in `herdr plugin log list --plugin wazum.kibitzr`.
 
