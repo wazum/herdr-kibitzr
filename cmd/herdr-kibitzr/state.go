@@ -17,8 +17,8 @@ func stateFile(stateDir, session string) string {
 	return filepath.Join(stateDir, hex.EncodeToString(sum[:8])+".json")
 }
 
-// Only a missing file means a session nobody has read yet. Reading anything
-// else that way would throw away the cursor.
+// Only a missing file means a session nobody has read yet. Treating anything
+// else that way would throw the cursor away.
 func loadState(path string) (state, error) {
 	var loaded state
 	if err := readJSON(path, &loaded); err != nil {
@@ -45,8 +45,8 @@ func readJSON(path string, into any) error {
 	return nil
 }
 
-// Renamed over the real file, so dying mid-write leaves the old contents rather
-// than half of these.
+// This writes a sibling and renames it over the real file, so a process that
+// dies mid-write leaves the old contents behind and not half of these.
 func writeJSON(path string, value any) error {
 	content, err := json.Marshal(value)
 	if err != nil {

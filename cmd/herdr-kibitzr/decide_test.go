@@ -46,6 +46,20 @@ func TestDecideGivesTheAgentOneUncontestedCleanupTurn(t *testing.T) {
 	}
 }
 
+// Herdr reports a turn end for a presentation change too, so an event can
+// arrive between the nudge and the agent's reply. Letting that spend the pass
+// leaves the real cleanup to be nudged about.
+func TestDecideKeepsTheCleanupPassForATurnWithNoWrites(t *testing.T) {
+	_, next := decide(state{Cursor: "20", AwaitingCleanup: true}, "30", 0)
+
+	if !next.AwaitingCleanup {
+		t.Error("a turn that wrote nothing spent the cleanup pass")
+	}
+	if next.Cursor != "30" {
+		t.Errorf("cursor %q, want the turn marked read anyway", next.Cursor)
+	}
+}
+
 func TestDecideNudgesAgainAfterTheCleanupTurnIsSpent(t *testing.T) {
 	_, spent := decide(state{Cursor: "20", AwaitingCleanup: true}, "30", 3)
 

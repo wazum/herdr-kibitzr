@@ -88,9 +88,18 @@ func TestClaudeLogRecoversFromACursorPastTheEnd(t *testing.T) {
 	}
 }
 
-func TestClaudeLogSaysSoWhenThereIsNoSession(t *testing.T) {
-	if _, _, err := (claudeLog{root: t.TempDir(), sessionID: "missing"}).additions(""); err == nil {
-		t.Error("a session with no log on disk was reported as readable")
+// Claude writes the file on its first tool call, so a session that has only
+// just started has no log at all. That is normal, not a failure.
+func TestClaudeLogTreatsAMissingLogAsNothingWrittenYet(t *testing.T) {
+	added, next, err := claudeLog{root: t.TempDir(), sessionID: "not-started"}.additions("7")
+	if err != nil {
+		t.Fatalf("a session that has not written yet is not an error: %v", err)
+	}
+	if len(added) != 0 {
+		t.Errorf("reported %d additions from a log that does not exist", len(added))
+	}
+	if next != "7" {
+		t.Errorf("cursor %q, want the previous %q kept", next, "7")
 	}
 }
 

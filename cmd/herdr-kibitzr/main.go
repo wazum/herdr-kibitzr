@@ -31,8 +31,8 @@ func main() {
 	}
 }
 
-// Per pane, so one pane can be quiet while its siblings in the same repository
-// are watched.
+// Per pane, so one pane can go quiet while its siblings in the same repo carry
+// on being watched.
 func toggle() error {
 	stateDir, err := ensureStateDir()
 	if err != nil {
@@ -54,8 +54,8 @@ func toggle() error {
 	}
 	fmt.Printf("%s · %s\n", paneID, word)
 
-	// The sidebar rather than a notification, because herdr ships with toast
-	// delivery off. No TTL: the mark stands until the pane is unmuted.
+	// This goes in the sidebar and not into a notification, because herdr ships
+	// with toast delivery off. No TTL, so the mark stands until you unmute.
 	agent := focusedAgent(os.Getenv("HERDR_PLUGIN_CONTEXT_JSON"))
 	if agent == "" {
 		return nil
@@ -76,7 +76,7 @@ func run() error {
 
 	repo, err := topLevel(finished.cwd)
 	if err != nil {
-		fmt.Println("quiet · not a git repository")
+		say(finished, "quiet · not a git repository")
 		return nil
 	}
 
@@ -85,7 +85,7 @@ func run() error {
 		return err
 	}
 	if muted(muteFile(stateDir), finished.paneID) {
-		fmt.Println("quiet · muted")
+		say(finished, "quiet · muted")
 		return nil
 	}
 
@@ -98,11 +98,11 @@ func run() error {
 	// A prompt submitted into a focused pane arrives glued onto whatever the
 	// person was already typing.
 	if pane.focused {
-		fmt.Println("quiet · pane is focused")
+		say(finished, "quiet · pane is focused")
 		return nil
 	}
 	if pane.session == "" {
-		fmt.Println("quiet · no agent session to read")
+		say(finished, "quiet · no agent session to read")
 		return nil
 	}
 	finished.session = pane.session
@@ -111,39 +111,49 @@ func run() error {
 
 	release, locked := acquire(path + ".lock")
 	if !locked {
-		fmt.Println("quiet · lock held")
+		say(finished, "quiet · lock held")
 		return nil
 	}
 	defer release()
 
 	previous, err := loadState(path)
 	if err != nil {
-		// Start over rather than stay silent until somebody deletes the file.
-		fmt.Printf("state discarded · %v\n", err)
+		// Start over. Staying silent until somebody deletes the file is worse.
+		say(finished, "state discarded · %v", err)
 		previous = state{}
 	}
 
 	added, cursor, err := authorshipFor(finished, repo).additions(previous.Cursor)
 	if err != nil {
-		fmt.Printf("quiet · cannot read what %s wrote: %v\n", finished.agent, err)
+		say(finished, "quiet · cannot read what %s wrote: %v", finished.agent, err)
 		return nil
 	}
 	comments, count := countAdded(added)
 
 	nudge, next := decide(previous, cursor, count)
 	if !nudge {
-		fmt.Printf("quiet · %d comments written\n", count)
+		if previous.AwaitingCleanup && count > 0 {
+			say(finished, "quiet · %d comments · the agent's own cleanup", count)
+		} else {
+			say(finished, "quiet · %d comments written", count)
+		}
 		return saveState(path, next)
 	}
 
 	// Nothing recorded, so the next turn reads the same writes again and retries.
 	if err := deliver(finished, comments); err != nil {
-		fmt.Printf("quiet · %d comments · not delivered: %v\n", count, err)
+		say(finished, "quiet · %d comments · not delivered: %v", count, err)
 		return nil
 	}
 
-	fmt.Printf("nudged %s · %d comments · %d files\n", finished.paneID, count, len(comments))
+	say(finished, "nudged · %d comments · %d files", count, len(comments))
 	return saveState(path, next)
+}
+
+// Every pane on the server writes to one plugin log, so every line has to say
+// which pane it came from.
+func say(finished turn, format string, args ...any) {
+	fmt.Printf("%s %s · %s\n", finished.paneID, finished.agent, fmt.Sprintf(format, args...))
 }
 
 func ensureStateDir() (string, error) {
@@ -177,9 +187,9 @@ func deliver(finished turn, comments map[string][]string) error {
 	return nil
 }
 
-// The agent label is the one piece of text in herdr's default sidebar rows a
-// plugin can change. Built from the agent kind, so two nudges cannot stack two
-// pairs of eyes.
+// The agent label is the one piece of text a plugin can change in herdr's
+// default sidebar rows. This builds it from the agent kind, so two nudges in a
+// row cannot stack two pairs of eyes.
 func markLooked(finished turn) {
 	if finished.agent == "" {
 		return

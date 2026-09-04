@@ -1,12 +1,12 @@
 package main
 
-// Reports the text one agent has written, so a comment is traced to the agent
-// that typed it rather than to whoever happens to be idle in the repository.
+// Reports the text one agent has written. This is how kibitzr blames the agent
+// that typed a comment and not whoever happens to be idle in the same repo.
 //
-// The cursor is opaque: each adapter stores whatever it needs to resume, and
-// the caller only persists the string it gets back. An empty one must answer
-// with no additions and a cursor at the present, so an agent is never blamed
-// for what it found on arrival.
+// Each adapter decides what its own cursor means and keeps whatever it needs to
+// carry on from there. The caller only stores the string. An empty cursor must
+// return no additions and a cursor at the present, so an agent never answers
+// for what it found when it arrived.
 type authorship interface {
 	additions(cursor string) (added []addition, next string, err error)
 }

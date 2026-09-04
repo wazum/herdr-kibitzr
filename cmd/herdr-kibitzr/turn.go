@@ -9,8 +9,8 @@ type turn struct {
 	session string
 }
 
-// What one `herdr pane get` answers that the event does not: whether somebody
-// is looking at the pane, and which agent session is running in it.
+// Two things the event leaves out and one `herdr pane get` answers. Whether
+// somebody is looking at the pane, and which agent session runs in it.
 type paneFacts struct {
 	focused bool
 	session string

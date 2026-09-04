@@ -15,7 +15,7 @@ func skipped(path string) bool {
 }
 
 // The comment lines in text an agent wrote, per file. Where the text came from
-// is the caller's problem; here it is just text.
+// is the caller's problem. Here it is only text.
 func addedComments(added []addition) map[string][]string {
 	found := map[string][]string{}
 	for _, one := range added {
@@ -64,8 +64,8 @@ func directive(text string) bool {
 	return directives[word]
 }
 
-// A block comment's inner lines are `* text`, `*/` or a bare `*`. Dereferencing
-// a pointer, as in `*ptr = value`, is code.
+// A block comment's inner lines look like `* text`, `*/` or a bare `*`. A
+// pointer dereference such as `*ptr = value` is code.
 func continuesBlock(text string) bool {
 	rest := text[1:]
 	return rest == "" || strings.HasPrefix(rest, "/") ||

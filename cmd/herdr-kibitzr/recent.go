@@ -8,10 +8,11 @@ import (
 	"time"
 )
 
-// For agents that do not record what they wrote. The cursor is an instant, and
-// a file counts as this agent's work if it was written after it. Weaker than an
-// agent's own account: a person typing in an editor during the same stretch is
-// indistinguishable, and so is a second agent in the same repository.
+// For agents that do not record what they wrote. The cursor is a point in time,
+// and a file counts as this agent's work if something wrote it later than that.
+// This is weaker than an agent's own account. It cannot tell the agent apart
+// from a person typing in an editor at the same time, or from a second agent in
+// the same repo.
 type recentlyChanged struct {
 	repo string
 }
@@ -47,8 +48,8 @@ func parseNanos(cursor string) (int64, bool) {
 	return nanos, err == nil
 }
 
-// What the working tree holds that the last commit does not: added lines for a
-// tracked file, the whole content for one git has never seen.
+// What the working tree holds and the last commit does not. That means added
+// lines for a tracked file, and the whole content for one git has never seen.
 func (source recentlyChanged) changedFiles() (map[string]string, error) {
 	diff, err := diffFrom(source.repo, "HEAD")
 	if err != nil {

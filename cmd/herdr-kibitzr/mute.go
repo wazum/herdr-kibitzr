@@ -9,8 +9,8 @@ func muteFile(stateDir string) string {
 	return filepath.Join(stateDir, "muted.json")
 }
 
-// Every pane is watched until somebody says otherwise, so a pane missing from
-// the muted list gets nudged.
+// kibitzr watches every pane until you say otherwise, so a pane that is not on
+// this list gets nudged.
 func muted(path, paneID string) bool {
 	return listed(path, paneID)
 }

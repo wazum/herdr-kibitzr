@@ -3,8 +3,9 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,6 +26,11 @@ func (log claudeLog) additions(cursor string) ([]addition, string, error) {
 	}
 
 	file, err := os.Open(path)
+	// Claude writes the log on its first tool call, so a session that has only
+	// just started has none. Nothing written yet, and nothing wrong.
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, cursor, nil
+	}
 	if err != nil {
 		return nil, cursor, err
 	}
@@ -40,8 +46,8 @@ func (log claudeLog) additions(cursor string) ([]addition, string, error) {
 	if err != nil {
 		return nil, strconv.FormatInt(end, 10), nil
 	}
-	// A cursor past the end, left by a log that rolled over, needs no guard of
-	// its own: the limit below goes negative and reads nothing.
+	// A log that rolled over leaves a cursor past the end. That needs no guard,
+	// because the limit below then goes negative and reads nothing.
 	if _, err := file.Seek(from, io.SeekStart); err != nil {
 		return nil, cursor, err
 	}
@@ -103,8 +109,8 @@ func writesIn(source io.Reader) ([]addition, error) {
 	return added, nil
 }
 
-// The directory the file sits under is derived from a path we do not have, so
-// it is searched for rather than computed.
+// Claude names the directory after the project path, which kibitzr does not
+// have, so this searches for the file instead of working out where it should be.
 func (log claudeLog) path() (string, error) {
 	root := log.root
 	if root == "" {
@@ -123,7 +129,9 @@ func (log claudeLog) path() (string, error) {
 		return "", err
 	}
 	if len(matches) == 0 {
-		return "", fmt.Errorf("no session log for %s under %s", log.sessionID, root)
+		// A path that does not exist, so the caller reads it as a session that
+		// has not written anything yet.
+		return filepath.Join(root, log.sessionID+".jsonl"), nil
 	}
 	return matches[0], nil
 }

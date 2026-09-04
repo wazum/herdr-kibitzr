@@ -6,9 +6,9 @@ import (
 )
 
 // One turn end can arrive as several events, each in its own process. Only one
-// of them looks at a repository. The kernel drops the lock however the process
-// exits, so there is no age at which a holder has to be assumed dead, and a
-// release cannot remove a lock somebody else is holding.
+// of them gets to look. The kernel drops this lock however the process exits,
+// so nothing has to guess when a holder died, and releasing it cannot take a
+// lock somebody else holds.
 func acquire(path string) (func(), bool) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {

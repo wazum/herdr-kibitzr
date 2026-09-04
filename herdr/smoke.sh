@@ -60,9 +60,10 @@ export KIBITZR_CLAUDE_PROJECTS="$work/claude"
 export HERDR_PLUGIN_EVENT_JSON='{"event":"pane_agent_status_changed","data":{"type":"pane_agent_status_changed","pane_id":"w1:p2","workspace_id":"w1","agent_status":"done","agent":"claude"}}'
 export HERDR_PLUGIN_CONTEXT_JSON="{\"focused_pane_id\":\"w1:p2\",\"focused_pane_cwd\":\"$repo\",\"focused_pane_agent\":\"claude\"}"
 
-# Every nudge hands the following turn to the agent. A scenario that wants to be
-# nudged has to let that turn go by first.
+# Every nudge hands the following turn to the agent. Only a turn that writes
+# something spends that pass, so this stands in for the agent's reply.
 spend_cleanup_pass() {
+	wrote "$repo/spent.go" "// the reply to the last nudge"
 	./bin/herdr-kibitzr >/dev/null
 }
 
@@ -104,7 +105,7 @@ refuse_prompt_calls "and prompts nobody"
 export HERDR_PANE_FOCUSED=true
 wrote "$repo/main.go" "// typed while the pane was focused"
 : > "$calls"
-expect "a focused pane is left alone" "quiet · pane is focused" "$(./bin/herdr-kibitzr)"
+expect "a focused pane is left alone" "w1:p2 claude · quiet · pane is focused" "$(./bin/herdr-kibitzr)"
 refuse_prompt_calls "and prompts nobody at all"
 unset HERDR_PANE_FOCUSED
 
@@ -112,7 +113,7 @@ unset HERDR_PANE_FOCUSED
 wrote "$repo/src/Order.php" "/** @var int */\n    private int \$total;"
 wrote "$repo/src/Money.php" "// a plain remark"
 : > "$calls"
-expect "comments the agent wrote nudge" "nudged w1:p2 · 3 comments · 3 files" "$(./bin/herdr-kibitzr)"
+expect "comments the agent wrote nudge" "w1:p2 claude · nudged · 3 comments · 3 files" "$(./bin/herdr-kibitzr)"
 expect "prompt reached the pane" "agent prompt w1:p2" "$(cat "$calls")"
 expect "prompt names the files" "Order.php" "$(cat "$calls")"
 expect "eyes ride on the agent label" \
@@ -127,7 +128,7 @@ expect "the cleanup itself is not nudged about" "quiet" "$(./bin/herdr-kibitzr)"
 refuse_prompt_calls "and prompts nobody once more"
 
 wrote "$repo/src/Money.php" "// and one after that"
-expect "a comment written later still nudges" "nudged w1:p2 · 1 comments" "$(./bin/herdr-kibitzr)"
+expect "a comment written later still nudges" "w1:p2 claude · nudged · 1 comments" "$(./bin/herdr-kibitzr)"
 
 # A turn where the agent wrote nothing at all.
 spend_cleanup_pass
@@ -140,7 +141,7 @@ wrote "$repo/main.go" "// written while the pane was blocked"
 export HERDR_REFUSE_PROMPT=1
 expect "a refused prompt is reported, not recorded" "not delivered" "$(./bin/herdr-kibitzr)"
 unset HERDR_REFUSE_PROMPT
-expect "the refused nudge is tried again" "nudged w1:p2 · 1 comments" "$(./bin/herdr-kibitzr)"
+expect "the refused nudge is tried again" "w1:p2 claude · nudged · 1 comments" "$(./bin/herdr-kibitzr)"
 
 # A muted pane is left alone, and unmuting brings it back.
 spend_cleanup_pass
@@ -152,14 +153,14 @@ expect "a muted pane is marked in the sidebar" \
 	"report-metadata w1:p2 --source kibitzr --display-agent claude 🔇" "$(cat "$calls")"
 
 : > "$calls"
-expect "a muted pane is skipped" "quiet · muted" "$(./bin/herdr-kibitzr)"
+expect "a muted pane is skipped" "w1:p2 claude · quiet · muted" "$(./bin/herdr-kibitzr)"
 refuse_prompt_calls "and prompts nobody while muted"
 
 : > "$calls"
 expect "toggling back reports watching" "watching" "$(./bin/herdr-kibitzr toggle)"
 expect "unmuting clears the mark" \
 	"report-metadata w1:p2 --source kibitzr --clear-display-agent" "$(cat "$calls")"
-expect "an unmuted pane is nudged again" "nudged w1:p2" "$(./bin/herdr-kibitzr)"
+expect "an unmuted pane is nudged again" "w1:p2 claude · nudged" "$(./bin/herdr-kibitzr)"
 unset HERDR_PANE_ID
 
 # An agent whose writes cannot be read falls back to what changed on disk while
@@ -174,7 +175,7 @@ refuse_prompt_calls "and prompts nobody yet"
 
 printf '\n// written by codex just now\n' >> "$repo/notes.go"
 expect "a codex pane is nudged for what changed on disk" \
-	"nudged w1:p9 · 1 comments" "$(./bin/herdr-kibitzr)"
+	"w1:p9 codex · nudged · 1 comments" "$(./bin/herdr-kibitzr)"
 
 export HERDR_PLUGIN_EVENT_JSON='{"data":{"pane_id":"w1:p2","agent_status":"working"}}'
 : > "$calls"

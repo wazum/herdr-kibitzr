@@ -23,8 +23,8 @@ func git(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 
-	// quotePath off so a path outside ASCII arrives as itself rather than as
-	// escapes the diff header parser would not recognise.
+	// With quotePath off, a path outside ASCII arrives as itself. Otherwise git
+	// escapes it and the diff header parser no longer recognises the name.
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.quotePath=false"}, args...)...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
@@ -73,8 +73,8 @@ func untrackedFiles(dir string) (map[string]string, error) {
 	return files, nil
 }
 
-// Lstat rather than Stat, so a symlink is skipped instead of followed, and the
-// limit is imposed while reading rather than trusted from the size beforehand.
+// Lstat skips a symlink instead of following it, and the read applies its own
+// limit instead of trusting the size it saw first.
 func readSource(path string) (string, bool) {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxFileBytes {
